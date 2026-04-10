@@ -74,6 +74,15 @@ class ConnectionManager:
 manager = ConnectionManager()
 last_message_time = datetime.now()
 
+# ─────────────────────────────────────────────
+# 暗號開關狀態
+# ─────────────────────────────────────────────
+danmaku_active = False          # 預設靜默模式
+session_start_time: datetime | None = None   # 本次開啟時間
+
+SECRET_START = "婚禮開始14131928"
+SECRET_STOP  = "婚禮結束14131928"
+
 
 # ─────────────────────────────────────────────
 # 資料庫
@@ -156,6 +165,19 @@ async def download_image_content(message_id: str) -> bytes | None:
     except Exception as e:
         print(f"[LINE] 下載圖片失敗: {e}")
     return None
+
+
+async def send_line_reply(reply_token: str, text: str):
+    headers = {
+        "Authorization": f"Bearer {CHANNEL_ACCESS_TOKEN}",
+        "Content-Type": "application/json",
+    }
+    payload = {"replyToken": reply_token, "messages": [{"type": "text", "text": text}]}
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            await client.post(f"{LINE_API_BASE}/message/reply", headers=headers, json=payload)
+    except Exception as e:
+        print(f"[LINE] 回覆訊息例外: {e}")
 
 
 async def send_line_broadcast(text: str):
@@ -244,20 +266,54 @@ async def webhook(request: Request):
             continue
 
         user_id = event.get("source", {}).get("userId", "")
+        reply_token = event.get("replyToken", "")
         message = event.get("message", {})
         msg_type = message.get("type", "")
         sender = await get_user_display_name(user_id)
 
         if msg_type == "text":
             text = message.get("text", "").strip()
-            if not text or not is_clean(text):
+            if not text:
                 continue
+
+            # 暗號：開啟彈幕
+            if text == SECRET_START:
+                global danmaku_active, session_start_time
+                danmaku_active = True
+                session_start_time = datetime.now()
+                con = sqlite3.connect(DB_PATH)
+                count = con.execute("SELECT COUNT(*) FROM messages").fetchone()[0]
+                con.close()
+                await send_line_reply(reply_token, f"✅ 彈幕已開啟，目前累積 {count} 則訊息")
+                await manager.broadcast({"type": "session_start", "session_start": session_start_time.isoformat()})
+                print("[暗號] 彈幕開啟")
+                continue
+
+            # 暗號：關閉彈幕
+            if text == SECRET_STOP:
+                danmaku_active = False
+                await send_line_reply(reply_token, "⏹️ 彈幕已關閉")
+                await manager.broadcast({"type": "session_stop"})
+                print("[暗號] 彈幕關閉")
+                continue
+
+            # 靜默模式：不存不推
+            if not danmaku_active:
+                continue
+
+            if not is_clean(text):
+                continue
+
             save_message("text", sender, content=text)
             await manager.broadcast({"type": "text", "sender_name": sender, "content": text})
             last_message_time = datetime.now()
             print(f"[訊息] {sender}：{text[:30]}{'...' if len(text) > 30 else ''}")
 
         elif msg_type == "image":
+            # 靜默模式：不存不推
+            if not danmaku_active:
+                continue
+
             msg_id = message.get("id", "")
             img_data = await download_image_content(msg_id)
             if not img_data:
@@ -285,6 +341,12 @@ async def webhook(request: Request):
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
+    # 告知前端目前狀態與本次 session 開始時間
+    await websocket.send_json({
+        "type": "session_info",
+        "active": danmaku_active,
+        "session_start": session_start_time.isoformat() if session_start_time else None,
+    })
     try:
         while True:
             await websocket.receive_text()
