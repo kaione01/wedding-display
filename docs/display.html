@@ -251,6 +251,29 @@
       el.addEventListener('animationend', () => el.remove());
     }
 
+    function spawnSticker(sender, stickerUrl) {
+      const wrap = document.createElement('div');
+      wrap.className = 'dm-image';
+      const img = document.createElement('img');
+      img.src = stickerUrl;
+      img.alt = `${sender} 的貼圖`;
+      img.style.maxWidth = '180px';
+      img.style.maxHeight = '180px';
+      img.style.border = 'none';
+      img.style.boxShadow = 'none';
+      img.style.background = 'transparent';
+      const tag = document.createElement('div');
+      tag.className = 'dm-sender-tag';
+      tag.textContent = `🎭 ${sender}`;
+      wrap.appendChild(img);
+      wrap.appendChild(tag);
+      wrap.style.top = Math.min(laneToTop(pickLane()), 65) + 'vh';
+      const dur = 14 + Math.random() * 4;
+      wrap.style.animationDuration = dur + 's';
+      dmWrap.appendChild(wrap);
+      wrap.addEventListener('animationend', () => wrap.remove());
+    }
+
     function spawnImage(sender, filePath) {
       const wrap = document.createElement('div');
       wrap.className = 'dm-image';
@@ -294,6 +317,7 @@
         if      (d.type === 'text')    spawnText(d.sender_name, d.content, false);
         else if (d.type === 'default') spawnText('', d.content, true);
         else if (d.type === 'image')   spawnImage(d.sender_name, d.file_path);
+        else if (d.type === 'sticker') spawnSticker(d.sender_name, d.sticker_url);
       };
 
       ws.onclose = () => {

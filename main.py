@@ -352,6 +352,29 @@ async def webhook(request: Request):
             last_message_time = datetime.now()
             print(f"[照片] {sender} 上傳了一張照片")
 
+        elif msg_type == "sticker":
+            # 靜默模式：不存不推
+            if not danmaku_active:
+                continue
+
+            sticker_id = message.get("stickerId", "")
+            sticker_type = message.get("stickerType", "static")
+
+            # LINE 貼圖 CDN（靜態貼圖用 png，動態用 apng）
+            if sticker_type == "animated":
+                sticker_url = f"https://stickershop.line-scdn.net/stickershop/v1/sticker/{sticker_id}/iPhone/sticker_animation@2x.apng"
+            else:
+                sticker_url = f"https://stickershop.line-scdn.net/stickershop/v1/sticker/{sticker_id}/iPhone/sticker@2x.png"
+
+            save_message("sticker", sender, content=sticker_url)
+            await manager.broadcast({
+                "type": "sticker",
+                "sender_name": sender,
+                "sticker_url": sticker_url,
+            })
+            last_message_time = datetime.now()
+            print(f"[貼圖] {sender} 傳了貼圖 {sticker_id}")
+
     return {"status": "ok"}
 
 
