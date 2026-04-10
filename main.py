@@ -25,7 +25,7 @@ from config import (
     BROADCAST_MESSAGE,
     CHANNEL_ACCESS_TOKEN,
     CHANNEL_SECRET,
-    DEFAULT_DANMAKU,
+    DEFAULT_DANMAKU_MESSAGES,
     HOST,
     NO_MESSAGE_TIMEOUT_SECONDS,
     PORT,
@@ -80,8 +80,9 @@ last_message_time = datetime.now()
 danmaku_active = False          # 預設靜默模式
 session_start_time: datetime | None = None   # 本次開啟時間
 
-SECRET_START = "婚禮開始14131928"
-SECRET_STOP  = "婚禮結束14131928"
+SECRET_START  = "婚禮開始14131928"
+SECRET_STOP   = "婚禮結束14131928"
+SECRET_STATUS = "現在彈幕狀態14131928"
 
 
 # ─────────────────────────────────────────────
@@ -203,15 +204,18 @@ async def send_line_broadcast(text: str):
 async def default_danmaku_loop():
     global last_message_time
     await asyncio.sleep(3)
+    msg_index = 0
     print("[彈幕] 發送初始預設彈幕")
-    await manager.broadcast({"type": "default", "content": DEFAULT_DANMAKU})
+    await manager.broadcast({"type": "default", "content": DEFAULT_DANMAKU_MESSAGES[0]})
 
     while True:
         await asyncio.sleep(30)
         elapsed = (datetime.now() - last_message_time).total_seconds()
         if elapsed >= NO_MESSAGE_TIMEOUT_SECONDS:
-            print(f"[彈幕] {NO_MESSAGE_TIMEOUT_SECONDS}秒沒有新訊息，重送預設彈幕")
-            await manager.broadcast({"type": "default", "content": DEFAULT_DANMAKU})
+            msg_index = (msg_index + 1) % len(DEFAULT_DANMAKU_MESSAGES)
+            msg = DEFAULT_DANMAKU_MESSAGES[msg_index]
+            print(f"[彈幕] 重送預設彈幕（第{msg_index+1}條）")
+            await manager.broadcast({"type": "default", "content": msg})
             last_message_time = datetime.now()
 
 
@@ -287,6 +291,16 @@ async def webhook(request: Request):
                 await send_line_reply(reply_token, f"✅ 彈幕已開啟，目前累積 {count} 則訊息")
                 await manager.broadcast({"type": "session_start", "session_start": session_start_time.isoformat()})
                 print("[暗號] 彈幕開啟")
+                continue
+
+            # 暗號：查詢狀態
+            if text == SECRET_STATUS:
+                status = "✅ 開啟中" if danmaku_active else "⏹️ 關閉中（靜默模式）"
+                start_str = session_start_time.strftime("%H:%M") if session_start_time else "尚未開啟"
+                con = sqlite3.connect(DB_PATH)
+                count = con.execute("SELECT COUNT(*) FROM messages").fetchone()[0]
+                con.close()
+                await send_line_reply(reply_token, f"📊 彈幕狀態：{status}\n本次開啟時間：{start_str}\n累積訊息：{count} 則")
                 continue
 
             # 暗號：關閉彈幕
