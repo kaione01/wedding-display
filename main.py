@@ -38,7 +38,8 @@ BASE_DIR   = Path(__file__).parent
 UPLOAD_DIR = BASE_DIR / "uploads"
 BG_DIR     = BASE_DIR / "static" / "wedding_bg"
 DB_PATH    = BASE_DIR / "wedding.db"
-STATIC_DIR = BASE_DIR / "static"
+STATIC_DIR  = BASE_DIR / "static"
+DOCS_DIR    = BASE_DIR / "docs"
 
 LINE_API_BASE = "https://api.line.me/v2/bot"
 LINE_DATA_API = "https://api-data.line.me/v2/bot"
@@ -402,7 +403,7 @@ async def websocket_endpoint(websocket: WebSocket):
 # ─────────────────────────────────────────────
 @app.get("/display", response_class=HTMLResponse)
 async def display_page():
-    html_path = STATIC_DIR / "display.html"
+    html_path = DOCS_DIR / "display.html"
     return HTMLResponse(content=html_path.read_text("utf-8"))
 
 
