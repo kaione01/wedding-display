@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bella & Kai ♥ 婚禮彈幕系統</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;700&family=Cormorant+Garamond:ital,wght@1,600&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      background: linear-gradient(135deg, #0d0a06 0%, #1a1208 50%, #0f0d0b 100%);
+      font-family: 'Noto Serif TC', serif;
+      color: #e8d9b0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      padding: 2rem;
+    }
+    .title {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: clamp(2rem, 6vw, 3.5rem);
+      font-style: italic;
+      color: #F5D478;
+      text-shadow: 0 0 30px rgba(245,212,120,0.3);
+      margin-bottom: 0.5rem;
+      text-align: center;
+    }
+    .subtitle {
+      font-size: 1rem;
+      color: rgba(232,217,176,0.6);
+      letter-spacing: 0.2em;
+      margin-bottom: 3rem;
+    }
+    .card {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(245,212,120,0.2);
+      border-radius: 12px;
+      padding: 2rem 2.5rem;
+      max-width: 500px;
+      width: 100%;
+      text-align: center;
+    }
+    .card p {
+      font-size: 0.95rem;
+      line-height: 1.8;
+      color: rgba(232,217,176,0.8);
+      margin-bottom: 1.5rem;
+    }
+    .btn {
+      display: inline-block;
+      background: linear-gradient(135deg, #c9a227, #F5D478);
+      color: #0d0a06;
+      font-family: 'Noto Serif TC', serif;
+      font-weight: 700;
+      font-size: 1rem;
+      padding: 0.75rem 2rem;
+      border-radius: 6px;
+      text-decoration: none;
+      transition: opacity 0.2s;
+    }
+    .btn:hover { opacity: 0.85; }
+    .footer {
+      margin-top: 3rem;
+      font-size: 0.75rem;
+      color: rgba(232,217,176,0.3);
+      letter-spacing: 0.1em;
+    }
+  </style>
+</head>
+<body>
+  <div class="title">Bella &amp; Kai</div>
+  <div class="subtitle">2 0 2 6 . 0 5 . 2 4</div>
+  <div class="card">
+    <p>婚禮即時彈幕展示系統<br>賓客透過 LINE 傳送祝福，即時顯示在現場大螢幕</p>
+    <a class="btn" href="display.html" id="display-link">開啟展示畫面 →</a>
+  </div>
+  <div class="footer">Powered by LINE Messaging API + WebSocket</div>
+
+  <script>
+    // 若 URL 含 ?ws= 參數，自動帶入到展示頁
+    const params = new URLSearchParams(location.search);
+    const ws = params.get('ws');
+    if (ws) {
+      document.getElementById('display-link').href = `display.html?ws=${encodeURIComponent(ws)}`;
+    }
+  </script>
+</body>
+</html>

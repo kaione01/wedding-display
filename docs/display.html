@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bella &amp; Kai ♥ 2026.05.24</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Cormorant+Garamond:ital,wght@1,600&display=swap" rel="stylesheet" />
+
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      width: 100vw; height: 100vh;
+      overflow: hidden;
+      background: #000;
+      font-family: 'Noto Serif TC', serif;
+      cursor: none;
+    }
+
+    /* ── 背景輪播 ── */
+    #bg-wrap { position: fixed; inset: 0; z-index: 0; }
+
+    .bg-slide {
+      position: absolute; inset: 0;
+      background-size: contain;
+      background-position: center center;
+      background-repeat: no-repeat;
+      opacity: 0;
+      transition: opacity 2s ease-in-out;
+      animation: ken-burns 20s ease-in-out infinite alternate;
+    }
+    .bg-slide.active { opacity: 1; }
+
+    @keyframes ken-burns {
+      0%   { transform: scale(1.00) translate( 0%,  0%); }
+      50%  { transform: scale(1.04) translate(-1%, -0.5%); }
+      100% { transform: scale(1.02) translate( 0.5%, 1%); }
+    }
+
+    /* ── 彈幕層 ── */
+    #danmaku-wrap {
+      position: fixed; inset: 0;
+      z-index: 10;
+      overflow: hidden;
+      pointer-events: none;
+    }
+
+    .dm-text {
+      position: absolute;
+      white-space: nowrap;
+      font-family: 'Noto Serif TC', serif;
+      font-weight: 700;
+      color: #F5D478;
+      text-shadow:
+        0 0 12px rgba(245,212,120,0.6),
+        2px 2px 6px rgba(0,0,0,0.9),
+        -1px -1px 4px rgba(0,0,0,0.7);
+      will-change: transform;
+      animation: dm-fly linear forwards;
+    }
+
+    .dm-default {
+      color: rgba(255,255,255,0.88);
+      font-size: 1.6rem !important;
+      text-shadow: 0 0 16px rgba(255,255,255,0.4), 2px 2px 8px rgba(0,0,0,0.95);
+    }
+
+    .dm-image {
+      position: absolute;
+      will-change: transform;
+      animation: dm-fly linear forwards;
+    }
+
+    .dm-image img {
+      display: block;
+      max-width: 300px;
+      max-height: 260px;
+      width: auto;
+      height: auto;
+      object-fit: contain;
+      border: 2.5px solid rgba(245,212,120,0.85);
+      border-radius: 3px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.7);
+    }
+
+    .dm-image .dm-sender-tag {
+      margin-top: 6px;
+      text-align: center;
+      font-family: 'Noto Serif TC', serif;
+      font-size: 0.85rem;
+      color: #F5D478;
+      text-shadow: 1px 1px 5px rgba(0,0,0,0.9);
+    }
+
+    @keyframes dm-fly {
+      from { transform: translateX(110vw); }
+      to   { transform: translateX(calc(-100% - 110vw)); }
+    }
+
+    /* ── 漸層背景（無照片時）── */
+    #bg-gradient {
+      position: fixed; inset: 0; z-index: 0;
+      background: linear-gradient(135deg, #0d0a06 0%, #1a1208 40%, #0f0d0b 100%);
+    }
+
+    /* ── 連線狀態指示（偵錯用，可隱藏）── */
+    #ws-status {
+      position: fixed;
+      bottom: 12px; right: 16px;
+      z-index: 100;
+      font-size: 0.7rem;
+      color: rgba(255,255,255,0.3);
+      font-family: monospace;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="bg-gradient"></div>
+  <div id="bg-wrap"></div>
+  <div id="danmaku-wrap"></div>
+  <div id="ws-status">● 連線中...</div>
+
+  <script>
+    // ══════════════════════════════════════════════
+    //  設定區：填入你的後端 VPS 位址
+    //  方法一：直接改 BACKEND_URL（適合固定網址）
+    //  方法二：URL 參數 ?ws=wss://your-server.com/ws
+    //  方法三：由 config.js 覆寫（參考 config.example.js）
+    // ══════════════════════════════════════════════
+    const DEFAULT_BACKEND_WS  = 'wss://YOUR_VPS_DOMAIN/ws';
+    const DEFAULT_BACKEND_API = 'https://YOUR_VPS_DOMAIN';
+
+    // ── 自動解析後端位址 ──
+    function resolveBackend() {
+      // 優先從 URL 參數取得：?ws=wss://...
+      const params = new URLSearchParams(location.search);
+      const wsParam = params.get('ws');
+      if (wsParam) {
+        const apiBase = wsParam.replace(/^wss?:\/\//, 'https://').replace(/\/ws$/, '');
+        return { ws: wsParam, api: apiBase };
+      }
+      // 若 window.WEDDING_CONFIG 存在（由 config.js 設定）
+      if (window.WEDDING_CONFIG) {
+        return {
+          ws:  window.WEDDING_CONFIG.wsUrl,
+          api: window.WEDDING_CONFIG.apiUrl,
+        };
+      }
+      // 若在同一個 origin 執行（本機 / Railway / VPS 直接開）
+      if (!location.hostname.includes('github.io')) {
+        const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        return {
+          ws:  `${proto}//${location.host}/ws`,
+          api: `${location.protocol}//${location.host}`,
+        };
+      }
+      // 最後備用：使用常數設定
+      return { ws: DEFAULT_BACKEND_WS, api: DEFAULT_BACKEND_API };
+    }
+
+    const BACKEND = resolveBackend();
+    console.log('[婚禮彈幕] 後端位址:', BACKEND);
+
+    // ══════════════════════════════════════════════
+    //  背景輪播（呼叫後端 /api/bg-photos）
+    // ══════════════════════════════════════════════
+    const bgWrap = document.getElementById('bg-wrap');
+    let slides = [], currentSlide = 0;
+
+    async function initSlideshow() {
+      try {
+        const photos = await (await fetch(`${BACKEND.api}/api/bg-photos`)).json();
+        if (!photos || photos.length === 0) return;
+        photos.forEach((name, i) => {
+          const div = document.createElement('div');
+          div.className = 'bg-slide' + (i === 0 ? ' active' : '');
+          div.style.backgroundImage = `url('${BACKEND.api}/bg/${encodeURIComponent(name)}')`;
+          bgWrap.appendChild(div);
+          slides.push(div);
+        });
+        if (slides.length > 1) setInterval(nextSlide, 8000);
+      } catch(e) { console.warn('無法載入背景照片，使用漸層背景'); }
+    }
+
+    function nextSlide() {
+      slides[currentSlide].classList.remove('active');
+      currentSlide = (currentSlide + 1) % slides.length;
+      slides[currentSlide].classList.add('active');
+    }
+
+    initSlideshow();
+
+    // ══════════════════════════════════════════════
+    //  彈幕引擎
+    // ══════════════════════════════════════════════
+    const dmWrap = document.getElementById('danmaku-wrap');
+    const LANE_COUNT = 9;
+    const LANE_MARGIN_TOP = 5;
+    const LANE_MARGIN_BOT = 10;
+    const laneLastUsed = new Array(LANE_COUNT).fill(0);
+
+    function pickLane() {
+      const now = Date.now();
+      const free = [];
+      for (let i = 0; i < LANE_COUNT; i++) {
+        if (now - laneLastUsed[i] > 2500) free.push(i);
+      }
+      const pool = free.length > 0 ? free : [...Array(LANE_COUNT).keys()];
+      const lane = pool[Math.floor(Math.random() * pool.length)];
+      laneLastUsed[lane] = now;
+      return lane;
+    }
+
+    function laneToTop(lane) {
+      const usable = 100 - LANE_MARGIN_TOP - LANE_MARGIN_BOT;
+      return LANE_MARGIN_TOP + (lane / LANE_COUNT) * usable;
+    }
+
+    function spawnText(sender, content, isDefault) {
+      const el = document.createElement('div');
+      el.className = 'dm-text' + (isDefault ? ' dm-default' : '');
+      el.style.fontSize = (isDefault ? 1.5 : (1.5 + Math.random() * 0.6)) + 'rem';
+      el.textContent = isDefault ? content : `${sender}：${content}`;
+      el.style.top = laneToTop(pickLane()) + 'vh';
+      const dur = 12 + Math.min(content.length * 0.08, 6) + Math.random() * 2;
+      el.style.animationDuration = dur + 's';
+      dmWrap.appendChild(el);
+      el.addEventListener('animationend', () => el.remove());
+    }
+
+    function spawnImage(sender, filePath) {
+      const wrap = document.createElement('div');
+      wrap.className = 'dm-image';
+      const img = document.createElement('img');
+      // filePath 可能是相對路徑（/uploads/xxx.jpg），補上後端 base URL
+      img.src = filePath.startsWith('http') ? filePath : `${BACKEND.api}${filePath}`;
+      img.alt = `${sender} 的照片`;
+      const tag = document.createElement('div');
+      tag.className = 'dm-sender-tag';
+      tag.textContent = `📸 ${sender}`;
+      wrap.appendChild(img);
+      wrap.appendChild(tag);
+      wrap.style.top = Math.min(laneToTop(pickLane()), 65) + 'vh';
+      const dur = 16 + Math.random() * 4;
+      wrap.style.animationDuration = dur + 's';
+      dmWrap.appendChild(wrap);
+      wrap.addEventListener('animationend', () => wrap.remove());
+    }
+
+    // ══════════════════════════════════════════════
+    //  WebSocket 連線
+    // ══════════════════════════════════════════════
+    const statusEl = document.getElementById('ws-status');
+    let ws, wsRetry = 2000;
+
+    function connect() {
+      statusEl.textContent = '● 連線中...';
+      statusEl.style.color = 'rgba(255,200,50,0.5)';
+      ws = new WebSocket(BACKEND.ws);
+
+      ws.onopen = () => {
+        wsRetry = 2000;
+        statusEl.textContent = '● 已連線';
+        statusEl.style.color = 'rgba(80,255,120,0.4)';
+        // 連線後 3 秒隱藏狀態列
+        setTimeout(() => { statusEl.style.opacity = '0'; }, 3000);
+      };
+
+      ws.onmessage = e => {
+        const d = JSON.parse(e.data);
+        if      (d.type === 'text')    spawnText(d.sender_name, d.content, false);
+        else if (d.type === 'default') spawnText('', d.content, true);
+        else if (d.type === 'image')   spawnImage(d.sender_name, d.file_path);
+      };
+
+      ws.onclose = () => {
+        statusEl.style.opacity = '1';
+        statusEl.textContent = `● 重連中 (${Math.round(wsRetry/1000)}s)...`;
+        statusEl.style.color = 'rgba(255,80,80,0.5)';
+        setTimeout(connect, wsRetry);
+        wsRetry = Math.min(wsRetry * 1.5, 15000);
+      };
+    }
+
+    connect();
+
+    // ── 防螢幕睡眠 ──
+    async function wakeLock() {
+      try { if ('wakeLock' in navigator) await navigator.wakeLock.request('screen'); } catch(e) {}
+    }
+    wakeLock();
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') wakeLock();
+    });
+  </script>
+</body>
+</html>

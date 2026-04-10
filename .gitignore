@@ -1,0 +1,32 @@
+# ── 敏感設定（絕對不要上傳）──
+config.py
+
+# ── 個人資料 ──
+uploads/
+wedding.db
+
+# ── 婚紗照（通常太大，自行放入）──
+static/wedding_bg/
+
+# ── 系統產生的暫存檔 ──
+.tunnel.log
+.last_webhook_url.txt
+cloudflared
+
+# ── Python ──
+__pycache__/
+*.pyc
+*.pyo
+.Python
+*.egg-info/
+dist/
+build/
+
+# ── macOS ──
+.DS_Store
+.AppleDouble
+
+# ── 環境 ──
+.env
+venv/
+env/
