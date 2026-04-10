@@ -280,6 +280,12 @@ async def webhook(request: Request):
             if not text:
                 continue
 
+            # 處理 LINE 專屬 emoji：用真實 Unicode emoji 替換
+            emojis = message.get("emojis", [])
+            if emojis:
+                # LINE emoji 無法直接取得圖片，用 ❤️ 替換每個 (emoji) 佔位符
+                text = text.replace("(emoji)", "❤️")
+
             # 暗號：開啟彈幕
             if text == SECRET_START:
                 global danmaku_active, session_start_time
