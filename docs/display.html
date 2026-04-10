@@ -104,6 +104,37 @@
       background: linear-gradient(135deg, #0d0a06 0%, #1a1208 40%, #0f0d0b 100%);
     }
 
+    /* ── QR Code 右下角 ── */
+    #qrcode-box {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      z-index: 50;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }
+
+    #qrcode-box img {
+      width: 130px;
+      height: 130px;
+      border-radius: 8px;
+      border: 3px solid rgba(245,212,120,0.85);
+      box-shadow: 0 4px 20px rgba(0,0,0,0.7);
+      background: #fff;
+      padding: 6px;
+    }
+
+    #qrcode-box .qr-label {
+      font-family: 'Noto Serif TC', serif;
+      font-size: 0.75rem;
+      color: rgba(255,255,255,0.9);
+      text-shadow: 1px 1px 6px rgba(0,0,0,0.95);
+      text-align: center;
+      letter-spacing: 0.05em;
+    }
+
     /* ── 連線狀態指示（偵錯用，可隱藏）── */
     #ws-status {
       position: fixed;
@@ -121,6 +152,10 @@
   <div id="bg-wrap"></div>
   <div id="danmaku-wrap"></div>
   <div id="ws-status">● 連線中...</div>
+  <div id="qrcode-box">
+    <img src="/static/qrcode.jpg" alt="LINE 官方帳號 QR Code" />
+    <div class="qr-label">官方帳號請掃此 QR Code</div>
+  </div>
 
   <script>
     // ══════════════════════════════════════════════
