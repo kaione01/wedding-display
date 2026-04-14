@@ -85,6 +85,10 @@ SECRET_START  = "婚禮開始14131928"
 SECRET_STOP   = "婚禮結束14131928"
 SECRET_STATUS = "現在彈幕狀態14131928"
 
+# ── 問答遊戲關鍵字 ──
+QUIZ_KEYWORD  = "遊戲"          # 賓客傳這個字就收到遊戲連結
+QUIZ_URL      = "https://你的VPS網域:8001/play"   # ← 部署後填入 VPS 網域
+
 
 # ─────────────────────────────────────────────
 # 資料庫
@@ -316,6 +320,15 @@ async def webhook(request: Request):
                 await send_line_reply(reply_token, "⏹️ 彈幕已關閉")
                 await manager.broadcast({"type": "session_stop"})
                 print("[暗號] 彈幕關閉")
+                continue
+
+            # 問答遊戲連結
+            if text == QUIZ_KEYWORD:
+                await send_line_reply(
+                    reply_token,
+                    f"🎮 婚禮問答遊戲開始囉！\n\n點擊連結加入：\n{QUIZ_URL}\n\n輸入暱稱就可以參加！"
+                )
+                print(f"[遊戲] {sender} 索取遊戲連結")
                 continue
 
             # 靜默模式：不存不推
