@@ -87,7 +87,7 @@ SECRET_STATUS = "現在彈幕狀態14131928"
 
 # ── 問答遊戲關鍵字 ──
 QUIZ_KEYWORD  = "遊戲"          # 賓客傳這個字就收到遊戲連結
-QUIZ_URL      = "https://你的VPS網域:8001/play"   # ← 部署後填入 VPS 網域
+QUIZ_URL      = "https://playback-group-strategy-catch.trycloudflare.com/quiz/play"
 
 
 # ─────────────────────────────────────────────
