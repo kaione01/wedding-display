@@ -17,11 +17,12 @@ from pathlib import Path
 import aiofiles
 import httpx
 import uvicorn
-from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from config import (
+    QUIZ_URL,
     BROADCAST_MESSAGE,
     CHANNEL_ACCESS_TOKEN,
     CHANNEL_SECRET,
@@ -87,7 +88,6 @@ SECRET_STATUS = "現在彈幕狀態14131928"
 
 # ── 問答遊戲關鍵字 ──
 QUIZ_KEYWORD  = "遊戲"          # 賓客傳這個字就收到遊戲連結
-QUIZ_URL      = "https://laden-yang-connectors-tubes.trycloudflare.com/quiz/play"
 
 
 # ─────────────────────────────────────────────
@@ -95,6 +95,8 @@ QUIZ_URL      = "https://laden-yang-connectors-tubes.trycloudflare.com/quiz/play
 # ─────────────────────────────────────────────
 def init_db():
     con = sqlite3.connect(DB_PATH)
+    con.execute("PRAGMA journal_mode=WAL")
+    con.execute("PRAGMA synchronous=NORMAL")
     con.execute("""
         CREATE TABLE IF NOT EXISTS messages (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -111,6 +113,7 @@ def init_db():
 
 def save_message(type_: str, sender: str, content: str = None, file_path: str = None):
     con = sqlite3.connect(DB_PATH)
+    con.execute("PRAGMA journal_mode=WAL")
     con.execute(
         "INSERT INTO messages (type, sender, content, file_path) VALUES (?,?,?,?)",
         (type_, sender, content, file_path),
@@ -258,9 +261,7 @@ app = FastAPI(lifespan=lifespan, title="婚禮即時展示系統")
 # LINE Webhook
 # ─────────────────────────────────────────────
 @app.post("/webhook")
-async def webhook(request: Request):
-    global last_message_time
-
+async def webhook(request: Request, bg: BackgroundTasks):
     body = await request.body()
     signature = request.headers.get("X-Line-Signature", "")
 
@@ -269,6 +270,12 @@ async def webhook(request: Request):
         raise HTTPException(status_code=400, detail="Invalid signature")
 
     payload = json.loads(body.decode("utf-8"))
+    bg.add_task(_process_webhook_events, payload)
+    return {"status": "ok"}
+
+
+async def _process_webhook_events(payload: dict):
+    global last_message_time, danmaku_active, session_start_time
 
     for event in payload.get("events", []):
         if event.get("type") != "message":
@@ -285,18 +292,15 @@ async def webhook(request: Request):
             if not text:
                 continue
 
-            # 處理 LINE 專屬 emoji：用真實 Unicode emoji 替換
             emojis = message.get("emojis", [])
             if emojis:
-                # LINE emoji 無法直接取得圖片，用 ❤️ 替換每個 (emoji) 佔位符
                 text = text.replace("(emoji)", "❤️")
 
-            # 暗號：開啟彈幕
             if text == SECRET_START:
-                global danmaku_active, session_start_time
                 danmaku_active = True
                 session_start_time = datetime.now()
                 con = sqlite3.connect(DB_PATH)
+                con.execute("PRAGMA journal_mode=WAL")
                 count = con.execute("SELECT COUNT(*) FROM messages").fetchone()[0]
                 con.close()
                 await send_line_reply(reply_token, f"✅ 彈幕已開啟，目前累積 {count} 則訊息")
@@ -304,17 +308,16 @@ async def webhook(request: Request):
                 print("[暗號] 彈幕開啟")
                 continue
 
-            # 暗號：查詢狀態
             if text == SECRET_STATUS:
                 status = "✅ 開啟中" if danmaku_active else "⏹️ 關閉中（靜默模式）"
                 start_str = session_start_time.strftime("%H:%M") if session_start_time else "尚未開啟"
                 con = sqlite3.connect(DB_PATH)
+                con.execute("PRAGMA journal_mode=WAL")
                 count = con.execute("SELECT COUNT(*) FROM messages").fetchone()[0]
                 con.close()
                 await send_line_reply(reply_token, f"📊 彈幕狀態：{status}\n本次開啟時間：{start_str}\n累積訊息：{count} 則")
                 continue
 
-            # 暗號：關閉彈幕
             if text == SECRET_STOP:
                 danmaku_active = False
                 await send_line_reply(reply_token, "⏹️ 彈幕已關閉")
@@ -322,16 +325,11 @@ async def webhook(request: Request):
                 print("[暗號] 彈幕關閉")
                 continue
 
-            # 問答遊戲連結
             if text == QUIZ_KEYWORD:
-                await send_line_reply(
-                    reply_token,
-                    f"🎮 婚禮問答遊戲開始囉！\n\n點擊連結加入：\n{QUIZ_URL}\n\n輸入暱稱就可以參加！"
-                )
+                await send_line_reply(reply_token, f"🎮 婚禮問答遊戲開始囉！\n\n點擊連結加入：\n{QUIZ_URL}\n\n輸入暱稱就可以參加！")
                 print(f"[遊戲] {sender} 索取遊戲連結")
                 continue
 
-            # 靜默模式：不存不推
             if not danmaku_active:
                 continue
 
@@ -344,7 +342,6 @@ async def webhook(request: Request):
             print(f"[訊息] {sender}：{text[:30]}{'...' if len(text) > 30 else ''}")
 
         elif msg_type == "image":
-            # 靜默模式：不存不推
             if not danmaku_active:
                 continue
 
@@ -367,14 +364,12 @@ async def webhook(request: Request):
             print(f"[照片] {sender} 上傳了一張照片")
 
         elif msg_type == "sticker":
-            # 靜默模式：不存不推
             if not danmaku_active:
                 continue
 
             sticker_id = message.get("stickerId", "")
             sticker_type = message.get("stickerType", "static")
 
-            # LINE 貼圖 CDN（靜態貼圖用 png，動態用 apng）
             if sticker_type == "animated":
                 sticker_url = f"https://stickershop.line-scdn.net/stickershop/v1/sticker/{sticker_id}/iPhone/sticker_animation@2x.apng"
             else:
@@ -389,12 +384,7 @@ async def webhook(request: Request):
             last_message_time = datetime.now()
             print(f"[貼圖] {sender} 傳了貼圖 {sticker_id}")
 
-    return {"status": "ok"}
 
-
-# ─────────────────────────────────────────────
-# WebSocket
-# ─────────────────────────────────────────────
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)

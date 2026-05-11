@@ -30,3 +30,4 @@ build/
 .env
 venv/
 env/
+VPS_INFRA.md
