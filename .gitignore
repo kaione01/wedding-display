@@ -4,6 +4,9 @@ config.py
 # ── 個人資料 ──
 uploads/
 wedding.db
+guests.csv
+unmatched_guests.json
+unmatched_guests.log
 
 # ── 婚紗照（通常太大，自行放入）──
 static/wedding_bg/
