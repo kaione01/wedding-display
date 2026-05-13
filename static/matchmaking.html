@@ -187,43 +187,53 @@
     .style-card {
       border: 2px solid rgba(44,74,48,0.2);
       border-radius: 8px;
-      padding: 0.7rem 0.4rem;
-      text-align: center;
+      overflow: hidden;
       background: rgba(44,74,48,0.05);
       transition: all 0.2s;
       user-select: none;
     }
     .style-option input:checked + .style-card {
       border-color: #2c4a30;
-      background: rgba(44,74,48,0.12);
-      box-shadow: 0 0 0 1px #2c4a30;
+      box-shadow: 0 0 0 2px #2c4a30;
     }
     .style-card:active { transform: scale(0.97); }
-    .style-emoji { font-size: 1.5rem; display: block; margin-bottom: 4px; }
+    .style-thumb {
+      width: 100%;
+      aspect-ratio: 2/3;
+      object-fit: cover;
+      object-position: top;
+      display: block;
+    }
+    .style-label {
+      padding: 0.4rem 0.3rem;
+      text-align: center;
+      background: rgba(44,74,48,0.06);
+    }
     .style-name {
-      font-size: 0.7rem;
+      font-size: 0.68rem;
       color: #2c4a30;
       font-weight: 700;
-      letter-spacing: 0.05em;
-      line-height: 1.4;
+      letter-spacing: 0.03em;
+      display: block;
     }
     .style-desc {
-      font-size: 0.62rem;
-      color: rgba(44,74,48,0.55);
-      margin-top: 2px;
-      line-height: 1.4;
+      font-size: 0.6rem;
+      color: rgba(44,74,48,0.5);
+      margin-top: 1px;
+      display: block;
     }
     .style-check {
       position: absolute;
-      top: 5px; right: 5px;
-      width: 16px; height: 16px;
+      top: 6px; right: 6px;
+      width: 20px; height: 20px;
       background: #2c4a30;
       border-radius: 50%;
       display: none;
       align-items: center;
       justify-content: center;
-      font-size: 0.6rem;
+      font-size: 0.65rem;
       color: #fff;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.3);
     }
     .style-option input:checked ~ .style-check { display: flex; }
 
@@ -488,9 +498,11 @@
         <label class="style-option">
           <input type="radio" name="style" value="romantic" checked />
           <div class="style-card">
-            <span class="style-emoji">🌸</span>
-            <div class="style-name">浪漫婚禮</div>
-            <div class="style-desc">粉金花卉<br>溫馨浪漫</div>
+            <img class="style-thumb" src="/static/preview_romantic.png" alt="浪漫婚禮風格預覽" />
+            <div class="style-label">
+              <span class="style-name">🌸 浪漫婚禮</span>
+              <span class="style-desc">粉金花卉・溫馨</span>
+            </div>
           </div>
           <div class="style-check">✓</div>
         </label>
@@ -498,9 +510,11 @@
         <label class="style-option">
           <input type="radio" name="style" value="magazine" />
           <div class="style-card">
-            <span class="style-emoji">✨</span>
-            <div class="style-name">雜誌封面</div>
-            <div class="style-desc">白金極簡<br>高端質感</div>
+            <img class="style-thumb" src="/static/preview_magazine.png" alt="雜誌封面風格預覽" />
+            <div class="style-label">
+              <span class="style-name">✨ 雜誌封面</span>
+              <span class="style-desc">白金極簡・高端</span>
+            </div>
           </div>
           <div class="style-check">✓</div>
         </label>
@@ -508,9 +522,11 @@
         <label class="style-option">
           <input type="radio" name="style" value="figure" />
           <div class="style-card">
-            <span class="style-emoji">🎮</span>
-            <div class="style-name">公仔立牌</div>
-            <div class="style-desc">日系收藏<br>最有話題</div>
+            <img class="style-thumb" src="/static/preview_figure.png" alt="公仔立牌風格預覽" />
+            <div class="style-label">
+              <span class="style-name">🎮 公仔立牌</span>
+              <span class="style-desc">日系收藏・話題</span>
+            </div>
           </div>
           <div class="style-check">✓</div>
         </label>
