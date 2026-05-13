@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>單身特供菜單 — Bella & Kai</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;700&family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400;1,600&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      min-height: 100vh;
+      background: #1a2e1c;
+      font-family: 'Noto Serif TC', serif;
+      color: #f4ede0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 1.5rem 1rem 3rem;
+    }
+
+    /* ── 標題 ── */
+    .header { text-align: center; margin-bottom: 1.5rem; }
+    .title {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: clamp(1.6rem, 5vw, 2.2rem);
+      font-style: italic;
+      color: #c9a227;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.25rem;
+    }
+    .subtitle {
+      font-size: 0.8rem;
+      color: rgba(244,237,224,0.5);
+      letter-spacing: 0.2em;
+    }
+
+    /* ── 菜單卡片容器 ── */
+    .card {
+      background: #f9f3e4;
+      border: 3px solid #2c4a30;
+      border-radius: 4px;
+      width: 100%;
+      max-width: 440px;
+      color: #2c2c1e;
+      overflow: hidden;
+    }
+    .card-header {
+      background: #2c4a30;
+      color: #f4ede0;
+      text-align: center;
+      padding: 12px 20px;
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 0.95rem;
+      letter-spacing: 0.25em;
+      border-bottom: 2px solid #c9a227;
+    }
+    .card-body { padding: 1.4rem 1.4rem 1.6rem; }
+
+    /* ── 照片上傳 ── */
+    .photo-section {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-bottom: 1.4rem;
+    }
+    .photo-upload-area {
+      position: relative;
+      width: 120px;
+      height: 120px;
+      cursor: pointer;
+    }
+    .photo-circle {
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      border: 2.5px solid rgba(44,74,48,0.5);
+      background: rgba(44,74,48,0.08);
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: border-color 0.2s;
+    }
+    .photo-circle:hover { border-color: #2c4a30; }
+    .photo-circle img {
+      width: 100%; height: 100%;
+      object-fit: cover;
+      display: none;
+    }
+    .photo-placeholder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 5px;
+      color: rgba(44,74,48,0.5);
+      font-size: 0.72rem;
+      letter-spacing: 0.05em;
+    }
+    .photo-badge {
+      position: absolute;
+      bottom: 4px; right: 4px;
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      background: #c9a227;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.9rem;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+    }
+    #photo-input { display: none; }
+    .photo-hint {
+      margin-top: 8px;
+      font-size: 0.72rem;
+      color: rgba(44,74,48,0.55);
+      letter-spacing: 0.05em;
+    }
+
+    /* ── 分區標題 ── */
+    .section-title {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 1rem;
+      font-weight: 600;
+      color: #2c4a30;
+      letter-spacing: 0.2em;
+      border-bottom: 1.5px solid #c9a227;
+      padding-bottom: 4px;
+      margin: 1.2rem 0 0.8rem;
+    }
+    .section-title:first-child { margin-top: 0; }
+
+    /* ── 欄位 ── */
+    .field { margin-bottom: 0.9rem; }
+    .field:last-child { margin-bottom: 0; }
+    .field-row { display: flex; gap: 0.6rem; }
+    .field-row .field { flex: 1; margin-bottom: 0; }
+
+    label {
+      display: block;
+      font-size: 0.72rem;
+      color: rgba(44,74,48,0.75);
+      letter-spacing: 0.1em;
+      margin-bottom: 0.3rem;
+    }
+    .required-dot::after {
+      content: ' *';
+      color: #c9a227;
+      font-weight: 700;
+    }
+    input[type="text"] {
+      width: 100%;
+      background: rgba(44,74,48,0.06);
+      border: 1px solid rgba(44,74,48,0.25);
+      border-radius: 5px;
+      color: #2c2c1e;
+      font-family: 'Noto Serif TC', serif;
+      font-size: 0.95rem;
+      padding: 0.55rem 0.75rem;
+      outline: none;
+      transition: border-color 0.2s;
+      -webkit-appearance: none;
+    }
+    input[type="text"]:focus { border-color: rgba(44,74,48,0.6); }
+    input[type="text"]::placeholder {
+      color: rgba(44,74,48,0.3);
+      font-size: 0.85rem;
+    }
+
+    /* ── 分隔線 ── */
+    .divider {
+      border: none;
+      border-top: 1px dashed rgba(44,74,48,0.2);
+      margin: 1.2rem 0;
+    }
+
+    /* ── 風格選擇 ── */
+    .style-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.6rem;
+      margin-top: 0.5rem;
+    }
+    .style-option {
+      position: relative;
+      cursor: pointer;
+    }
+    .style-option input[type="radio"] { display: none; }
+    .style-card {
+      border: 2px solid rgba(44,74,48,0.2);
+      border-radius: 8px;
+      padding: 0.7rem 0.4rem;
+      text-align: center;
+      background: rgba(44,74,48,0.05);
+      transition: all 0.2s;
+      user-select: none;
+    }
+    .style-option input:checked + .style-card {
+      border-color: #2c4a30;
+      background: rgba(44,74,48,0.12);
+      box-shadow: 0 0 0 1px #2c4a30;
+    }
+    .style-card:active { transform: scale(0.97); }
+    .style-emoji { font-size: 1.5rem; display: block; margin-bottom: 4px; }
+    .style-name {
+      font-size: 0.7rem;
+      color: #2c4a30;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      line-height: 1.4;
+    }
+    .style-desc {
+      font-size: 0.62rem;
+      color: rgba(44,74,48,0.55);
+      margin-top: 2px;
+      line-height: 1.4;
+    }
+    .style-check {
+      position: absolute;
+      top: 5px; right: 5px;
+      width: 16px; height: 16px;
+      background: #2c4a30;
+      border-radius: 50%;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.6rem;
+      color: #fff;
+    }
+    .style-option input:checked ~ .style-check { display: flex; }
+
+    /* ── AI 說明 ── */
+    .ai-note {
+      background: rgba(201,162,39,0.1);
+      border: 1px solid rgba(201,162,39,0.3);
+      border-radius: 6px;
+      padding: 0.7rem 0.9rem;
+      margin-top: 0.8rem;
+      font-size: 0.75rem;
+      color: rgba(44,44,30,0.75);
+      line-height: 1.7;
+      text-align: center;
+    }
+    .ai-note strong { color: #2c4a30; }
+
+    /* ── 提交按鈕 ── */
+    .btn-submit {
+      width: 100%;
+      background: linear-gradient(135deg, #2c4a30, #3d6640);
+      color: #f4ede0;
+      font-family: 'Noto Serif TC', serif;
+      font-weight: 700;
+      font-size: 1rem;
+      padding: 0.85rem;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.1s;
+      letter-spacing: 0.1em;
+      margin-top: 1.2rem;
+    }
+    .btn-submit:hover:not(:disabled) { opacity: 0.88; }
+    .btn-submit:active:not(:disabled) { transform: scale(0.98); }
+    .btn-submit:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* ── 狀態訊息 ── */
+    #status {
+      margin-top: 1rem;
+      padding: 0.8rem 1rem;
+      border-radius: 5px;
+      font-size: 0.88rem;
+      line-height: 1.6;
+      display: none;
+      text-align: center;
+    }
+    #status.loading {
+      display: block;
+      background: rgba(44,74,48,0.1);
+      border: 1px solid rgba(44,74,48,0.25);
+      color: rgba(44,74,48,0.85);
+    }
+    #status.success {
+      display: block;
+      background: rgba(44,74,48,0.12);
+      border: 1px solid rgba(44,74,48,0.3);
+      color: #2c4a30;
+    }
+    #status.error {
+      display: block;
+      background: rgba(180,40,40,0.08);
+      border: 1px solid rgba(180,40,40,0.25);
+      color: #8b2020;
+    }
+
+    /* ── 結果區塊（產圖後顯示）── */
+    #result-section {
+      display: none;
+      margin-top: 1.2rem;
+      text-align: center;
+    }
+    #result-section.visible { display: block; }
+
+    .result-title {
+      font-size: 0.8rem;
+      color: rgba(44,74,48,0.6);
+      letter-spacing: 0.1em;
+      margin-bottom: 0.6rem;
+    }
+
+    #result-img {
+      width: 100%;
+      border-radius: 8px;
+      border: 2px solid rgba(44,74,48,0.2);
+      display: block;
+    }
+
+    .btn-download {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      margin-top: 0.8rem;
+      background: #c9a227;
+      color: #fff;
+      font-family: 'Noto Serif TC', serif;
+      font-weight: 700;
+      font-size: 0.9rem;
+      padding: 0.65rem 1.4rem;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      text-decoration: none;
+      transition: opacity 0.2s;
+      letter-spacing: 0.05em;
+    }
+    .btn-download:hover { opacity: 0.85; }
+
+    .screen-note {
+      margin-top: 0.5rem;
+      font-size: 0.72rem;
+      color: rgba(44,74,48,0.5);
+      line-height: 1.6;
+    }
+
+    /* ── Footer ── */
+    .card-footer {
+      background: #2c4a30;
+      color: rgba(244,237,224,0.6);
+      text-align: center;
+      padding: 10px;
+      font-family: 'Cormorant Garamond', serif;
+      font-style: italic;
+      font-size: 0.78rem;
+      letter-spacing: 0.15em;
+      border-top: 2px solid #c9a227;
+    }
+    .footer-page {
+      margin-top: 2rem;
+      font-size: 0.68rem;
+      color: rgba(244,237,224,0.25);
+      letter-spacing: 0.12em;
+    }
+
+    /* ── 動畫 ── */
+    @keyframes pop {
+      0%   { transform: scale(0.8); opacity: 0; }
+      60%  { transform: scale(1.06); }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    .success-icon { animation: pop 0.4s ease-out; display: inline-block; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner {
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid rgba(44,74,48,0.3);
+      border-top-color: #2c4a30;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <div class="title">單身特供菜單</div>
+    <div class="subtitle">B E L L A  &amp;  K A I  · 2026.05.24</div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">· TODAY'S SPECIAL · LIMITED EDITION ·</div>
+
+    <div class="card-body">
+
+      <!-- 照片上傳 -->
+      <div class="photo-section">
+        <div class="photo-upload-area" onclick="document.getElementById('photo-input').click()">
+          <div class="photo-circle" id="photo-circle">
+            <img id="photo-preview" alt="預覽" />
+            <div class="photo-placeholder" id="photo-placeholder">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                <circle cx="12" cy="7" r="4"/>
+              </svg>
+              <span>上傳照片</span>
+            </div>
+          </div>
+          <div class="photo-badge">📷</div>
+        </div>
+        <div class="photo-hint">點擊上傳大頭照（必填）</div>
+      </div>
+      <input type="file" id="photo-input" accept="image/*" capture="user" />
+
+      <!-- 基本資料 -->
+      <div class="section-title">基本資料</div>
+
+      <div class="field">
+        <label class="required-dot">姓名 / 暱稱</label>
+        <input type="text" id="name-input" placeholder="輸入你的名字" maxlength="20" autocomplete="off" />
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label>年齡</label>
+          <input type="text" id="age-input" placeholder="25 歲" maxlength="10" inputmode="numeric" />
+        </div>
+        <div class="field">
+          <label>身高</label>
+          <input type="text" id="height-input" placeholder="170 cm" maxlength="10" />
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label>居住地</label>
+          <input type="text" id="location-input" placeholder="台北市" maxlength="20" />
+        </div>
+        <div class="field">
+          <label>職業</label>
+          <input type="text" id="occupation-input" placeholder="設計師" maxlength="20" />
+        </div>
+      </div>
+
+      <div class="field">
+        <label>拿手好戲</label>
+        <input type="text" id="specialty-input" placeholder="例：煮飯、爬山、Netflix" maxlength="30" />
+      </div>
+
+      <hr class="divider" />
+
+      <!-- 關於我 -->
+      <div class="section-title">About Me — 關於我</div>
+      <div class="field">
+        <label>第一點</label>
+        <input type="text" id="about1-input" placeholder="我的興趣是…" maxlength="30" />
+      </div>
+      <div class="field">
+        <label>第二點</label>
+        <input type="text" id="about2-input" placeholder="我的個性是…" maxlength="30" />
+      </div>
+      <div class="field">
+        <label>第三點</label>
+        <input type="text" id="about3-input" placeholder="我的夢想是…" maxlength="30" />
+      </div>
+
+      <hr class="divider" />
+
+      <!-- 理想型 -->
+      <div class="section-title">Ideal Type — 理想型</div>
+      <div class="field">
+        <label>第一點</label>
+        <input type="text" id="ideal1-input" placeholder="個性溫柔體貼" maxlength="30" />
+      </div>
+      <div class="field">
+        <label>第二點</label>
+        <input type="text" id="ideal2-input" placeholder="有共同興趣" maxlength="30" />
+      </div>
+      <div class="field">
+        <label>第三點</label>
+        <input type="text" id="ideal3-input" placeholder="會做飯加分" maxlength="30" />
+      </div>
+
+      <hr class="divider" />
+
+      <!-- 風格選擇 -->
+      <div class="section-title">選擇卡片風格</div>
+      <div class="style-grid">
+
+        <label class="style-option">
+          <input type="radio" name="style" value="romantic" checked />
+          <div class="style-card">
+            <span class="style-emoji">🌸</span>
+            <div class="style-name">浪漫婚禮</div>
+            <div class="style-desc">粉金花卉<br>溫馨浪漫</div>
+          </div>
+          <div class="style-check">✓</div>
+        </label>
+
+        <label class="style-option">
+          <input type="radio" name="style" value="magazine" />
+          <div class="style-card">
+            <span class="style-emoji">✨</span>
+            <div class="style-name">雜誌封面</div>
+            <div class="style-desc">白金極簡<br>高端質感</div>
+          </div>
+          <div class="style-check">✓</div>
+        </label>
+
+        <label class="style-option">
+          <input type="radio" name="style" value="figure" />
+          <div class="style-card">
+            <span class="style-emoji">🎮</span>
+            <div class="style-name">公仔立牌</div>
+            <div class="style-desc">日系收藏<br>最有話題</div>
+          </div>
+          <div class="style-check">✓</div>
+        </label>
+
+      </div>
+
+      <!-- AI 說明 -->
+      <div class="ai-note">
+        ✨ 送出後由 <strong>GPT AI</strong> 依照你選擇的風格產圖<br>
+        約需 <strong>15–30 秒</strong>，完成後可下載並自動發送至婚禮大螢幕 🎉
+      </div>
+
+      <!-- 送出 -->
+      <button class="btn-submit" id="submit-btn" disabled>產生我的相親卡 ✨</button>
+
+      <div id="status"></div>
+
+      <!-- 結果區塊 -->
+      <div id="result-section">
+        <div class="result-title">— 你的相親卡 —</div>
+        <img id="result-img" src="" alt="生成的相親卡" />
+        <br>
+        <a id="download-btn" class="btn-download" href="#" download>
+          ⬇ 下載相親卡
+        </a>
+        <div class="screen-note">
+          🎉 已同步發送至婚宴大螢幕，<br>即將出現在所有賓客眼前！
+        </div>
+      </div>
+
+    </div><!-- /card-body -->
+
+    <div class="card-footer">♥ 單身是單品，心動才是主餐 ♥</div>
+  </div>
+
+  <div class="footer-page">Bella &amp; Kai Wedding 2026</div>
+
+  <script>
+    const photoInput   = document.getElementById('photo-input');
+    const photoPreview = document.getElementById('photo-preview');
+    const placeholder  = document.getElementById('photo-placeholder');
+    const nameInput    = document.getElementById('name-input');
+    const submitBtn    = document.getElementById('submit-btn');
+    const statusEl     = document.getElementById('status');
+    const resultSection = document.getElementById('result-section');
+    const resultImg    = document.getElementById('result-img');
+    const downloadBtn  = document.getElementById('download-btn');
+
+    let photoFile = null;
+
+    // ── 照片預覽 ──
+    photoInput.addEventListener('change', () => {
+      const file = photoInput.files[0];
+      if (!file) return;
+      if (file.size > 10 * 1024 * 1024) {
+        showStatus('error', '照片太大，請選擇 10MB 以內的圖片');
+        return;
+      }
+      photoFile = file;
+      const reader = new FileReader();
+      reader.onload = e => {
+        photoPreview.src = e.target.result;
+        photoPreview.style.display = 'block';
+        placeholder.style.display = 'none';
+      };
+      reader.readAsDataURL(file);
+      checkReady();
+    });
+
+    nameInput.addEventListener('input', checkReady);
+
+    function checkReady() {
+      submitBtn.disabled = !(photoFile && nameInput.value.trim().length > 0);
+    }
+
+    // ── 送出 ──
+    submitBtn.addEventListener('click', async () => {
+      if (!photoFile || !nameInput.value.trim()) return;
+
+      const selectedStyle = document.querySelector('input[name="style"]:checked').value;
+
+      submitBtn.disabled = true;
+      resultSection.classList.remove('visible');
+      showStatus('loading', '<span class="spinner"></span> AI 正在為你產圖，約需 20 秒…');
+
+      const form = new FormData();
+      form.append('name',       nameInput.value.trim());
+      form.append('age',        document.getElementById('age-input').value.trim());
+      form.append('height',     document.getElementById('height-input').value.trim());
+      form.append('location',   document.getElementById('location-input').value.trim());
+      form.append('occupation', document.getElementById('occupation-input').value.trim());
+      form.append('specialty',  document.getElementById('specialty-input').value.trim());
+      form.append('about1',     document.getElementById('about1-input').value.trim());
+      form.append('about2',     document.getElementById('about2-input').value.trim());
+      form.append('about3',     document.getElementById('about3-input').value.trim());
+      form.append('ideal1',     document.getElementById('ideal1-input').value.trim());
+      form.append('ideal2',     document.getElementById('ideal2-input').value.trim());
+      form.append('ideal3',     document.getElementById('ideal3-input').value.trim());
+      form.append('style',      selectedStyle);
+      form.append('photo',      photoFile);
+
+      try {
+        const res  = await fetch('/api/profile-upload', { method: 'POST', body: form });
+        const data = await res.json();
+
+        if (res.ok && data.image_url) {
+          showStatus('success', '<span class="success-icon">🎉</span> 產圖成功！已發送至大螢幕');
+          // 顯示圖片與下載按鈕
+          resultImg.src = data.image_url;
+          downloadBtn.href = data.image_url;
+          downloadBtn.download = `相親卡_${nameInput.value.trim()}.png`;
+          resultSection.classList.add('visible');
+        } else {
+          showStatus('error', data.detail || '送出失敗，請再試一次');
+          submitBtn.disabled = false;
+        }
+      } catch (e) {
+        showStatus('error', '網路錯誤，請確認連線後再試');
+        submitBtn.disabled = false;
+      }
+    });
+
+    function showStatus(type, html) {
+      statusEl.className = type;
+      statusEl.innerHTML = html;
+    }
+  </script>
+</body>
+</html>

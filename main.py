@@ -8,11 +8,14 @@ import base64
 import csv
 import hashlib
 import hmac
+import io
 import json
 import os
 import re
 import sqlite3
+import textwrap
 import threading
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
@@ -20,8 +23,9 @@ from pathlib import Path
 import aiofiles
 import httpx
 import uvicorn
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, JSONResponse
+from openai import AsyncOpenAI
+from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from config import (
@@ -36,14 +40,26 @@ from config import (
 )
 
 # ─────────────────────────────────────────────
+# OpenAI 客戶端
+# ─────────────────────────────────────────────
+_openai_api_key = os.environ.get("OPENAI_API_KEY", "")
+openai_client = AsyncOpenAI(api_key=_openai_api_key) if _openai_api_key else None
+
+# ─────────────────────────────────────────────
 # 路徑設定
 # ─────────────────────────────────────────────
-BASE_DIR   = Path(__file__).parent
-UPLOAD_DIR = BASE_DIR / "uploads"
-BG_DIR     = BASE_DIR / "static" / "wedding_bg"
-DB_PATH    = BASE_DIR / "wedding.db"
-STATIC_DIR  = BASE_DIR / "static"
-DOCS_DIR    = BASE_DIR / "docs"
+BASE_DIR     = Path(__file__).parent
+UPLOAD_DIR   = BASE_DIR / "uploads"
+PROFILES_DIR = UPLOAD_DIR / "profiles"
+BG_DIR       = BASE_DIR / "static" / "wedding_bg"
+SEATING_DIR  = BASE_DIR / "static" / "seating"
+DB_PATH      = BASE_DIR / "wedding.db"
+STATIC_DIR   = BASE_DIR / "static"
+DOCS_DIR     = BASE_DIR / "docs"
+
+# 對外公開 URL（用於組座位圖 LINE message originalContentUrl）
+# 從 QUIZ_URL（如 https://xxx.trycloudflare.com/quiz/play）反推 base
+PUBLIC_BASE_URL = QUIZ_URL.replace("/quiz/play", "") if QUIZ_URL else ""
 
 LINE_API_BASE = "https://api.line.me/v2/bot"
 LINE_DATA_API = "https://api-data.line.me/v2/bot"
@@ -249,6 +265,54 @@ def _format_candidate_line(g: dict, idx: int) -> str:
 CHOICE_BUTTON_LIMIT = 5   # 超過此數量 → 文字列全部，按鈕只顯示前 N 個
 
 
+def _normalize_table_name(name: str) -> str:
+    """桌名 normalize：去掉括號內容（含中英文括號），用於對應座位圖檔名。
+    例：「男方親友2桌(素)」→「男方親友2桌」
+    """
+    if not name:
+        return ""
+    s = re.sub(r"[（(][^）)]*[）)]", "", name).strip()
+    return s
+
+
+def _get_seat_image_url(table_name: str) -> str | None:
+    """取得該桌的座位圖公開 URL。找不到檔案或無 PUBLIC_BASE_URL 時回傳 None。"""
+    if not PUBLIC_BASE_URL:
+        return None
+    normalized = _normalize_table_name(table_name)
+    if not normalized:
+        return None
+    image_path = SEATING_DIR / f"{normalized}.jpg"
+    if not image_path.exists():
+        print(f"[座位圖] 找不到圖檔: {image_path}")
+        return None
+    from urllib.parse import quote
+    return f"{PUBLIC_BASE_URL}/static/seating/{quote(normalized)}.jpg"
+
+
+def _build_final_seat_messages(guest: dict) -> list[dict]:
+    """組賓客最終看到的座位回覆訊息（文字 + 座位圖）。
+    - 一般桌：文字桌名/姓名 + 座位圖
+    - 男方親友桌（有「特殊回覆」如「請聯繫新郎爸爸」）：只送特殊文字，**不送座位圖**
+    """
+    special = (guest.get("特殊回覆") or "").strip()
+    if special:
+        return [{"type": "text", "text": f"{special}\n\n祝您今天愉快 🎊"}]
+
+    table = guest.get("桌名", "")
+    name  = guest.get("姓名", "")
+    text_msg = f"您被安排在【{table}】，姓名：{name} 😊\n祝您今天愉快 🎊"
+    msgs: list[dict] = [{"type": "text", "text": text_msg}]
+    img_url = _get_seat_image_url(table)
+    if img_url:
+        msgs.append({
+            "type": "image",
+            "originalContentUrl": img_url,
+            "previewImageUrl":    img_url,
+        })
+    return msgs
+
+
 def _build_choice_buttons(candidates: list[dict], limit: int = CHOICE_BUTTON_LIMIT) -> list[dict]:
     """產生候選人選擇按鈕（最多 limit 個 + 都不是 + 取消）。
     Label 顯示「N. 姓名」方便對照文字清單序號；
@@ -400,6 +464,468 @@ def _resize_image_bytes(data: bytes, max_dim: int = 1920, quality: int = 85) -> 
         return data
 
 
+# ─────────────────────────────────────────────
+# 相親功能：字型 / 合成 / DB
+# ─────────────────────────────────────────────
+def _find_chinese_font(bold: bool = False) -> str | None:
+    if bold:
+        candidates = [
+            "/usr/local/share/fonts/SourceHanSerif/SourceHanSerifTC-Bold.otf",
+            "/usr/share/fonts/opentype/noto/NotoSerifCJK-Bold.ttc",
+            "/usr/share/fonts/noto-cjk/NotoSerifCJK-Bold.ttc",
+        ]
+    else:
+        candidates = [
+            "/usr/local/share/fonts/SourceHanSerif/SourceHanSerifTC-Regular.otf",
+            "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
+            "/usr/share/fonts/noto-cjk/NotoSerifCJK-Regular.ttc",
+        ]
+    for p in candidates:
+        if Path(p).exists():
+            return p
+    return None
+
+
+FONT_BOLD_PATH    = _find_chinese_font(bold=True)
+FONT_REGULAR_PATH = _find_chinese_font(bold=False)
+
+
+def _init_profile_db():
+    with sqlite3.connect(DB_PATH) as con:
+        con.execute("PRAGMA journal_mode=WAL")
+        con.execute("""
+            CREATE TABLE IF NOT EXISTS user_profiles (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                sender_name TEXT,
+                image_path  TEXT,
+                created_at  TEXT DEFAULT (datetime('now','localtime'))
+            )
+        """)
+
+
+def _log_profile_to_db(name: str, image_path: str):
+    with sqlite3.connect(DB_PATH) as con:
+        con.execute("PRAGMA journal_mode=WAL")
+        con.execute(
+            "INSERT INTO user_profiles (sender_name, image_path) VALUES (?,?)",
+            (name, image_path),
+        )
+
+
+def _build_menu_html(fields: dict) -> str:
+    """生成婚禮相親卡 HTML（1920×1080）。照片 src 使用 __PHOTO_SRC__ 佔位符，由前端替換。"""
+    name       = fields.get("name", "")
+    age        = fields.get("age", "").strip()
+    height     = fields.get("height", "").strip()
+    location   = fields.get("location", "").strip()
+    occupation = fields.get("occupation", "").strip()
+    specialty  = fields.get("specialty", "").strip()
+    about_items = [fields.get(f"about{i}", "").strip() for i in range(1, 4)
+                   if fields.get(f"about{i}", "").strip()]
+    ideal_items = [fields.get(f"ideal{i}", "").strip() for i in range(1, 4)
+                   if fields.get(f"ideal{i}", "").strip()]
+
+    # ── info rows ──
+    info_rows_html = ""
+    if age:
+        info_rows_html += f'<div class="ir"><span class="ii">✨</span><span class="il">年齡</span><span class="iv">{age} 歲</span></div>'
+    if height:
+        info_rows_html += f'<div class="ir"><span class="ii">📏</span><span class="il">身高</span><span class="iv">{height} cm</span></div>'
+    if location:
+        info_rows_html += f'<div class="ir"><span class="ii">🏠</span><span class="il">居住地</span><span class="iv">{location}</span></div>'
+    if occupation:
+        info_rows_html += f'<div class="ir"><span class="ii">💼</span><span class="il">職業</span><span class="iv">{occupation}</span></div>'
+    if specialty:
+        info_rows_html += f'<div class="ir"><span class="ii">🎯</span><span class="il">拿手好戲</span><span class="iv">{specialty}</span></div>'
+
+    def _card_items(items: list) -> str:
+        if not items:
+            return '<div class="no-item">神秘嘉賓，快去打招呼 ✨</div>'
+        return "".join(
+            f'<div class="ci"><span class="cn">{i}</span><span class="ct">{it}</span></div>'
+            for i, it in enumerate(items, 1)
+        )
+
+    about_html = _card_items(about_items)
+    ideal_html = _card_items(ideal_items)
+
+    # Sparkles scattered across background
+    _sp_data = [
+        (100,50,22),(320,78,18),(550,32,24),(820,55,16),(1180,42,20),
+        (1460,68,22),(1720,44,18),(1880,120,16),(60,700,20),(1860,680,18),
+        (440,960,22),(1650,940,16),(900,140,18),(1100,88,22),(1380,170,16),
+    ]
+    _stars = ["✦","✧","⋆","✦","✧"]
+    sparkles = "".join(
+        f'<span class="sp" style="left:{x}px;top:{y}px;font-size:{s}px">{_stars[i%5]}</span>'
+        for i,(x,y,s) in enumerate(_sp_data)
+    )
+    _ht_data = [(490,155,22),(1268,310,18),(1055,78,20),(1298,442,16),(508,440,14),(1580,200,18)]
+    hearts_html = "".join(
+        f'<span class="ht" style="left:{x}px;top:{y}px;font-size:{s}px">♥</span>'
+        for x,y,s in _ht_data
+    )
+
+    return f"""<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8"/>
+<link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@700&family=Noto+Serif+TC:wght@400;700&family=Kalam:wght@400;700&display=swap" rel="stylesheet"/>
+<style>
+*{{margin:0;padding:0;box-sizing:border-box}}
+body{{
+  width:1920px;height:1080px;overflow:hidden;
+  background:linear-gradient(145deg,#fce4d6 0%,#f9d0c0 35%,#fbc9b8 65%,#fce4d8 100%);
+  font-family:'Noto Serif TC',serif;
+  position:relative;
+}}
+.sp{{position:absolute;color:rgba(210,120,90,0.52);pointer-events:none;z-index:0}}
+.ht{{position:absolute;color:rgba(230,110,110,0.38);pointer-events:none;z-index:0}}
+
+/* top-right banner */
+.banner{{
+  position:absolute;top:28px;right:44px;z-index:10;
+  background:linear-gradient(90deg,#f08080,#e06060);
+  color:white;font-size:40px;font-weight:700;letter-spacing:4px;
+  padding:12px 48px 12px 28px;
+  border-radius:6px 28px 28px 6px;
+  box-shadow:0 4px 18px rgba(180,60,60,0.35);
+}}
+
+/* photo column */
+.photo-col{{
+  position:absolute;left:56px;top:78px;
+  display:flex;flex-direction:column;align-items:center;
+  z-index:5;
+}}
+.photo-ring{{
+  width:396px;height:396px;border-radius:50%;
+  background:linear-gradient(135deg,#ebb898,#d4786a);
+  padding:9px;
+  box-shadow:0 0 0 9px rgba(215,145,100,0.26),0 10px 36px rgba(0,0,0,0.22);
+}}
+.photo-circ{{
+  width:100%;height:100%;border-radius:50%;overflow:hidden;
+  border:3px solid rgba(255,255,255,0.75);
+  background:#e0c8b8;
+  display:flex;align-items:center;justify-content:center;
+}}
+.photo-circ img{{width:100%;height:100%;object-fit:cover;}}
+
+.welcome{{
+  margin-top:28px;
+  background:#fffcf5;
+  padding:14px 32px;
+  border-radius:8px;
+  font-family:'Kalam',cursive;
+  font-size:36px;color:#9b4565;
+  transform:rotate(-2.5deg);
+  box-shadow:2px 3px 12px rgba(0,0,0,0.13);
+  position:relative;
+}}
+.welcome::before{{
+  content:'';
+  position:absolute;top:-13px;left:50%;transform:translateX(-50%);
+  width:54px;height:22px;
+  background:rgba(240,168,128,0.72);
+  border-radius:4px;
+}}
+
+/* info column */
+.info-col{{
+  position:absolute;left:520px;top:58px;width:760px;z-index:5;
+}}
+.person-name{{
+  font-family:'Noto Serif TC',serif;
+  font-size:112px;font-weight:700;line-height:1.05;
+  background:linear-gradient(135deg,#c9526a 0%,#d97055 60%,#c96878 100%);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  filter:drop-shadow(2px 3px 6px rgba(180,80,80,0.22));
+  display:block;word-break:keep-all;
+}}
+.tagline{{
+  font-family:'Kalam',cursive;
+  font-size:42px;color:#c07878;
+  margin:6px 0 26px;letter-spacing:1px;
+}}
+.ir{{display:flex;align-items:flex-start;gap:16px;margin-bottom:16px;}}
+.ii{{font-size:34px;width:46px;text-align:center;flex-shrink:0;line-height:1.3;}}
+.il{{color:#9b6070;font-size:34px;min-width:148px;flex-shrink:0;}}
+.iv{{color:#3d1e2c;font-size:34px;font-weight:700;line-height:1.4;}}
+
+/* bottom two cards */
+.cards{{
+  position:absolute;
+  left:520px;bottom:54px;right:56px;
+  display:flex;gap:40px;
+  z-index:5;
+}}
+.card{{
+  flex:1;
+  background:rgba(255,250,247,0.93);
+  border-radius:22px;
+  border:2px solid rgba(215,140,110,0.42);
+  padding:26px 34px;
+  box-shadow:0 4px 26px rgba(200,100,80,0.1);
+}}
+.ct-title{{
+  font-size:44px;color:#c9526a;font-weight:700;
+  margin-bottom:16px;
+  display:flex;align-items:center;gap:10px;
+  font-family:'Kalam',cursive;
+  border-bottom:2px dashed rgba(215,140,110,0.38);
+  padding-bottom:12px;
+}}
+.ci{{display:flex;align-items:flex-start;gap:16px;margin-bottom:12px;}}
+.cn{{
+  width:36px;height:36px;border-radius:50%;
+  background:linear-gradient(135deg,#f5a0a0,#e87878);
+  color:white;font-size:20px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;margin-top:5px;
+}}
+.ct{{font-size:32px;color:#5a3040;line-height:1.58;}}
+.no-item{{font-size:30px;color:#c9a0a0;font-style:italic;padding:8px 0;}}
+
+/* left decorations */
+.roses{{
+  position:absolute;bottom:48px;left:-8px;
+  font-size:100px;line-height:1.1;
+  z-index:1;opacity:0.72;
+  transform:rotate(-10deg);
+  filter:drop-shadow(2px 2px 6px rgba(0,0,0,0.1));
+}}
+.love-note{{
+  position:absolute;bottom:186px;left:60px;
+  font-family:'Kalam',cursive;
+  font-size:28px;color:rgba(158,80,100,0.7);
+  transform:rotate(-3deg);
+  line-height:1.65;
+  z-index:5;
+}}
+
+/* right decoration */
+.wedding-deco{{
+  position:absolute;right:26px;top:360px;
+  font-size:66px;z-index:3;opacity:0.8;
+  line-height:1.3;text-align:center;
+}}
+
+/* footer */
+.footer{{
+  position:absolute;bottom:0;left:0;right:0;
+  text-align:center;padding:10px 0 8px;z-index:8;
+}}
+.footer-tag{{
+  display:inline-block;
+  background:linear-gradient(90deg,#f09090,#e87878,#f09090);
+  color:white;font-size:32px;font-weight:700;letter-spacing:3px;
+  padding:8px 72px;border-radius:34px;
+  box-shadow:0 3px 14px rgba(200,80,80,0.3);
+}}
+.love-script{{
+  display:block;
+  font-family:'Dancing Script',cursive;
+  font-size:34px;color:rgba(200,95,95,0.62);
+  margin-top:4px;
+}}
+</style>
+</head>
+<body>
+{sparkles}
+{hearts_html}
+
+<div class="roses">🌹🌸<br/>🌿</div>
+<div class="wedding-deco">🥂<br/>💍</div>
+<div class="banner">單身招募中 ♥</div>
+
+<div class="photo-col">
+  <div class="photo-ring">
+    <div class="photo-circ"><img src="__PHOTO_SRC__" alt=""/></div>
+  </div>
+  <div class="welcome">歡迎認識我！♥</div>
+</div>
+
+<div class="love-note">一起創造屬於我們的<br/>美好回憶吧！♥</div>
+
+<div class="info-col">
+  <span class="person-name">{name}</span>
+  <div class="tagline">今晚有機會脫單嗎？❤️</div>
+  {info_rows_html}
+</div>
+
+<div class="cards">
+  <div class="card">
+    <div class="ct-title">♥ 關於我</div>
+    {about_html}
+  </div>
+  <div class="card">
+    <div class="ct-title">♥ 理想型</div>
+    {ideal_html}
+  </div>
+</div>
+
+<div class="footer">
+  <span class="footer-tag">真心找對象，非誠勿擾 😊</span>
+  <span class="love-script">Let\'s write our love story.</span>
+</div>
+</body>
+</html>"""
+
+
+def _build_ai_prompt(fields: dict, style: str) -> str:
+    """根據風格與賓客資料建構 gpt-image-2 prompt"""
+    name       = fields.get("name", "")
+    age        = fields.get("age", "")
+    height     = fields.get("height", "")
+    location   = fields.get("location", "")
+    occupation = fields.get("occupation", "")
+    specialty  = fields.get("specialty", "")
+    about1     = fields.get("about1", "")
+    about2     = fields.get("about2", "")
+    about3     = fields.get("about3", "")
+    ideal1     = fields.get("ideal1", "")
+    ideal2     = fields.get("ideal2", "")
+    ideal3     = fields.get("ideal3", "")
+
+    about_lines = "\n".join(f"{i+1}. {t}" for i, t in enumerate([about1, about2, about3]) if t)
+    ideal_lines = "\n".join(f"{i+1}. {t}" for i, t in enumerate([ideal1, ideal2, ideal3]) if t)
+    info_line   = "  ·  ".join(filter(None, [age, height, location, occupation]))
+
+    if style == "magazine":
+        return f"""這是一張高端婚禮雜誌封面風格的單身自我介紹卡，直式 1024x1536，
+參考 VOGUE WEDDING 雜誌版面與《愛的迫降》電影海報設計感。
+
+【版面配置】
+上半部（55%）：專業棚拍風格人像照，照片中的人物保留原始樣貌，柔光、簡潔灰背景，自信表情
+下半部（45%）：乾淨白底資訊區，細金線分隔欄位
+
+【完整文字內容】（精確渲染以下中文，不得錯字）
+雜誌小標籤（金色）：「SINGLE & READY」
+封面主標題（大）：「{name}」
+Tagline：「今晚有機會脫單嗎？」
+資訊橫排：「{info_line}」
+{"拿手好戲：" + specialty if specialty else ""}
+金色細分隔線
+「💖 關於我」
+{about_lines}
+「💕 理想型」
+{ideal_lines}
+右下角金色斜體：「♥ Bella & Kai 2026.05.24」
+
+【色調】純白 #FFFFFF、金色 #B8972E、暖灰 #F5F3F0
+【字體】姓名用粗體現代中文，資料用細體無襯線
+【限制】版面極簡，不加多餘裝飾，金線只用作分隔，所有中文必須正確"""
+
+    elif style == "figure":
+        return f"""這是一張公仔立牌產品包裝風格的單身自我介紹卡，直式 1024x1536，
+參考日本壽屋 ARTFX 系列公仔商品包裝設計。
+
+【版面配置】
+上半部（60%）：照片中的人物以光澤3D塑膠公仔／壓克力立牌方式呈現，
+站在透明壓克力底座上，保留人物真實面貌與服裝特徵，
+旁邊有小道具代表其興趣。白色背景，產品攝影打光，柔和陰影。
+下半部（40%）：產品規格卡片區，米白底色，頂部有紅色圓形徽章
+
+【完整文字內容】（精確渲染以下中文，不得錯字）
+紅色徽章：「單身招募中」
+產品名稱（大）：「{name}」
+副標：「今晚有機會脫單嗎？」
+規格區塊：
+年齡：{age} ｜ 身高：{height}
+居住地：{location} ｜ 職業：{occupation}
+{"拿手好戲：" + specialty if specialty else ""}
+「關於我」
+{about_lines}
+「理想型」
+{ideal_lines}
+底部印章：「♥ Bella & Kai 2026.05.24 Official Edition」
+
+【色調】白底、紅色徽章 #CC2936、米黃規格區 #F5F0E8、金色點綴
+【限制】公仔保留寫實人類五官比例，所有中文必須正確"""
+
+    else:  # romantic (default)
+        return f"""這是一張婚禮現場使用的單身自我介紹卡，直式 1024x1536，
+風格參考《單身即地獄》的精緻感與台灣婚禮請柬的溫暖氛圍。
+
+【版面配置】
+頂部：照片中的人物以圓形 Polaroid 邊框呈現，置中，保留原始樣貌
+照片下方：姓名大標題
+中間：資料資訊卡
+下方左右各一欄：「關於我」與「理想型」
+
+【完整文字內容】（精確渲染以下中文，不得錯字）
+頂部小標：「單身招募中 💘」
+主標題：「{name}」
+副標：「今晚有機會脫單嗎？」
+✨ 年齡：{age}
+📏 身高：{height}
+🏠 居住地：{location}
+💼 職業：{occupation}
+{"🎯 拿手好戲：" + specialty if specialty else ""}
+💖 關於我
+{about_lines}
+💕 理想型
+{ideal_lines}
+底部：「♥ Bella & Kai 2026.05.24」
+
+【色調】奶油白 #FFF8F0、香檳金 #C9A84C、淡粉 #FFD6E0
+【裝飾】小愛心、花瓣、柔和光暈、戒指小圖示，點綴但不雜亂
+【字體】姓名用優雅手寫體，資料用清晰無襯線體
+【限制】不得出現多餘人物、所有中文必須正確"""
+
+
+async def _generate_profile_card_ai(fields: dict, photo_bytes: bytes, style: str) -> bytes:
+    """呼叫 gpt-image-2 產生完整相親卡，回傳 PNG bytes"""
+    if not openai_client:
+        raise RuntimeError("OPENAI_API_KEY 未設定")
+
+    prompt = _build_ai_prompt(fields, style)
+
+    # 將賓客照片作為參考圖傳入（images.edit）
+    photo_file = io.BytesIO(photo_bytes)
+    photo_file.name = "photo.jpg"
+
+    result = await openai_client.images.edit(
+        model="gpt-image-2",
+        image=photo_file,
+        prompt=prompt,
+        size="1024x1536",
+        quality="medium",
+        n=1,
+    )
+    return base64.b64decode(result.data[0].b64_json)
+
+
+async def _process_profile_upload(fields: dict, photo_bytes: bytes):
+    try:
+        loop = asyncio.get_running_loop()
+        photo_bytes = await loop.run_in_executor(
+            None, _resize_image_bytes, photo_bytes, 1200, 88
+        )
+        ts = int(time.time())
+        safe = re.sub(r"[^\w一-鿿]", "_", fields["name"])[:12]
+        filename = f"profile_{ts}_{safe}.jpg"
+        save_path = PROFILES_DIR / filename
+        async with aiofiles.open(save_path, "wb") as f:
+            await f.write(photo_bytes)
+
+        photo_path = f"/uploads/profiles/{filename}"
+        html = _build_menu_html(fields)
+        await manager.broadcast({
+            "type":        "profile",
+            "html":        html,
+            "photo_path":  photo_path,
+            "sender_name": fields["name"],
+        })
+        _log_profile_to_db(fields["name"], photo_path)
+        print(f"[相親] {fields['name']} 相親菜單已廣播：{filename}")
+    except Exception as e:
+        import traceback
+        print(f"[ERROR] 相親菜單生成失敗: {e}")
+        traceback.print_exc()
+
+
 async def download_image_content(message_id: str) -> bytes | None:
     headers = {"Authorization": f"Bearer {CHANNEL_ACCESS_TOKEN}"}
     try:
@@ -472,6 +998,24 @@ async def send_line_reply_with_quickreply(reply_token: str, text: str, buttons: 
             await client.post(f"{LINE_API_BASE}/message/reply", headers=headers, json=payload)
     except Exception as e:
         print(f"[LINE] Quick Reply 回覆例外: {e}")
+
+
+async def send_line_reply_multi(reply_token: str, messages: list[dict]):
+    """一次送多個 LINE message（最多 5 個）。
+    messages 可以混合 type: text / image / sticker 等。
+    """
+    headers = {
+        "Authorization": f"Bearer {CHANNEL_ACCESS_TOKEN}",
+        "Content-Type": "application/json",
+    }
+    payload = {"replyToken": reply_token, "messages": messages[:5]}
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            r = await client.post(f"{LINE_API_BASE}/message/reply", headers=headers, json=payload)
+            if r.status_code != 200:
+                print(f"[LINE] Multi reply 失敗 {r.status_code}: {r.text[:200]}")
+    except Exception as e:
+        print(f"[LINE] Multi reply 例外: {e}")
 
 
 async def send_line_broadcast(text: str):
@@ -615,8 +1159,11 @@ async def lifespan(app: FastAPI):
     global MAIN_LOOP
     MAIN_LOOP = asyncio.get_running_loop()
     UPLOAD_DIR.mkdir(exist_ok=True)
+    PROFILES_DIR.mkdir(exist_ok=True)
     BG_DIR.mkdir(parents=True, exist_ok=True)
     init_db()
+    _init_profile_db()
+    print(f"[相親] 字型 Bold={FONT_BOLD_PATH}, Regular={FONT_REGULAR_PATH}")
     print("=" * 50)
     print("🎉 婚禮即時展示系統啟動")
     print(f"📺 展示畫面：http://localhost:{PORT}/display")
@@ -805,8 +1352,7 @@ async def _handle_one_event(event: dict):
                 matched = conversation_temp.get(user_id, {}).get("matched")
                 _clear_query_state(user_id)
                 if matched:
-                    seat_msg = matched["特殊回覆"] or f"您被安排在【{matched['桌名']}】，姓名：{matched['姓名']} 😊"
-                    await send_line_reply(reply_token, f"{seat_msg}\n祝您今天愉快 🎊")
+                    await send_line_reply_multi(reply_token, _build_final_seat_messages(matched))
                     print(f"[座位查詢] {sender} 確認本人 → 公布座位 {matched['桌名']}/{matched['姓名']}")
                 else:
                     await send_line_reply(reply_token, "好的！祝您今天愉快 🎊")
@@ -883,9 +1429,8 @@ async def _handle_one_event(event: dict):
                         pass
 
             if chosen:
-                seat_msg = chosen["特殊回覆"] or f"您被安排在【{chosen['桌名']}】，姓名：{chosen['姓名']} 😊"
                 _clear_query_state(user_id)
-                await send_line_reply(reply_token, f"{seat_msg}\n祝您今天愉快 🎊")
+                await send_line_reply_multi(reply_token, _build_final_seat_messages(chosen))
                 print(f"[座位查詢] {sender} 多筆選擇 → {chosen['姓名']}/{chosen['桌名']}")
             else:
                 # 不認得輸入 → 重發按鈕
@@ -1082,15 +1627,8 @@ async def _handle_one_event(event: dict):
             return
 
         if not danmaku_active:
-            # 沒進入任何流程、沒匹配任何關鍵字、彈幕也沒開 → 不要沉默
-            # 統一回覆「看不懂」+ 通知 admin，避免 state 丟失或用戶誤入時卡住
-            await send_line_reply(
-                reply_token,
-                "抱歉，我看不懂這個訊息 😢\n"
-                "若想查詢您的座位，請輸入「當天我坐哪裡」開始 🙏"
-            )
-            asyncio.create_task(notify_admins_unmatched(sender, "(未進入查詢流程)", text))
-            print(f"[Fallback] 無法處理訊息：{sender}：{text[:50]}")
+            # 彈幕沒開、用戶沒在任何流程中、訊息不是任何關鍵字 → 靜默忽略
+            # （不要為了「不沉默」而對任何亂打字都回覆，會打擾賓客也會洗版 admin）
             return
 
         if not is_clean(text):
@@ -1199,6 +1737,82 @@ async def bg_photos():
     exts = {".jpg", ".jpeg", ".png", ".webp"}
     photos = [f.name for f in sorted(BG_DIR.iterdir()) if f.suffix.lower() in exts]
     return JSONResponse(photos)
+
+
+@app.post("/api/profile-upload")
+async def profile_upload(
+    name:       str = Form(...),
+    age:        str = Form(""),
+    height:     str = Form(""),
+    location:   str = Form(""),
+    occupation: str = Form(""),
+    specialty:  str = Form(""),
+    about1:     str = Form(""),
+    about2:     str = Form(""),
+    about3:     str = Form(""),
+    ideal1:     str = Form(""),
+    ideal2:     str = Form(""),
+    ideal3:     str = Form(""),
+    style:      str = Form("romantic"),
+    photo: UploadFile = File(...),
+):
+    name = name.strip()[:20]
+    if not name:
+        raise HTTPException(status_code=400, detail="姓名不能為空")
+
+    photo_bytes = await photo.read()
+    if len(photo_bytes) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="照片過大，請壓縮後再試（上限 10MB）")
+    if len(photo_bytes) < 1000:
+        raise HTTPException(status_code=400, detail="照片檔案無效")
+
+    fields = {
+        "name":       name,
+        "age":        age.strip()[:10],
+        "height":     height.strip()[:10],
+        "location":   location.strip()[:20],
+        "occupation": occupation.strip()[:20],
+        "specialty":  specialty.strip()[:30],
+        "about1":     about1.strip()[:30],
+        "about2":     about2.strip()[:30],
+        "about3":     about3.strip()[:30],
+        "ideal1":     ideal1.strip()[:30],
+        "ideal2":     ideal2.strip()[:30],
+        "ideal3":     ideal3.strip()[:30],
+    }
+    style = style if style in ("romantic", "magazine", "figure") else "romantic"
+
+    # ── AI 產圖（同步等待，約 15-30 秒）──
+    try:
+        card_bytes = await _generate_profile_card_ai(fields, photo_bytes, style)
+    except Exception as e:
+        print(f"[ERROR] AI 產圖失敗: {e}")
+        raise HTTPException(status_code=500, detail=f"AI 產圖失敗，請稍後再試：{e}")
+
+    # ── 儲存 PNG ──
+    ts   = int(time.time())
+    safe = re.sub(r"[^\w一-鿿]", "_", name)[:12]
+    filename  = f"profile_{ts}_{safe}.png"
+    save_path = PROFILES_DIR / filename
+    async with aiofiles.open(save_path, "wb") as f:
+        await f.write(card_bytes)
+
+    image_url = f"/uploads/profiles/{filename}"
+
+    # ── WebSocket 廣播到大螢幕 ──
+    await manager.broadcast({
+        "type":        "profile",
+        "image_path":  image_url,
+        "sender_name": name,
+    })
+    _log_profile_to_db(name, image_url)
+    print(f"[相親] {name} 相親卡已產圖並廣播：{filename}")
+
+    return JSONResponse({
+        "status":    "ok",
+        "image_url": image_url,
+        "message":   "相親卡產圖完成，已發送至大螢幕！",
+    })
 
 
 # ─────────────────────────────────────────────
