@@ -103,12 +103,69 @@
       position: fixed; inset: 0; z-index: 0;
       background: linear-gradient(135deg, #0d0a06 0%, #1a1208 40%, #0f0d0b 100%);
     }
+
+    /* ── 相親卡全螢幕 Overlay ── */
+    #profile-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      z-index: 8;                        /* 彈幕 z=10 在上，背景 z=0 在下 */
+      background: rgba(10, 8, 4, 0.92);
+      justify-content: center;
+      align-items: center;
+      animation: profile-fadein 0.6s ease-out forwards;
+    }
+    #profile-overlay.visible { display: flex; }
+
+    @keyframes profile-fadein {
+      from { opacity: 0; transform: scale(0.96); }
+      to   { opacity: 1; transform: scale(1); }
+    }
+
+    #profile-overlay img {
+      max-height: 92vh;
+      max-width: 92vw;
+      object-fit: contain;
+      border-radius: 8px;
+      box-shadow: 0 8px 60px rgba(0,0,0,0.8), 0 0 0 1px rgba(245,212,120,0.3);
+    }
+
+    #profile-overlay .profile-sender {
+      position: absolute;
+      bottom: 28px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(245,212,120,0.8);
+      font-family: 'Noto Serif TC', serif;
+      font-size: 1.1rem;
+      letter-spacing: 0.15em;
+      text-shadow: 0 2px 8px rgba(0,0,0,0.9);
+      white-space: nowrap;
+    }
+
+    #profile-countdown {
+      position: absolute;
+      top: 20px;
+      right: 28px;
+      width: 40px; height: 40px;
+      border-radius: 50%;
+      border: 2px solid rgba(245,212,120,0.5);
+      display: flex; align-items: center; justify-content: center;
+      color: rgba(245,212,120,0.7);
+      font-size: 1rem;
+      font-family: 'Noto Serif TC', serif;
+    }
   </style>
 </head>
 <body>
   <div id="bg-gradient"></div>
   <div id="bg-wrap"></div>
   <div id="danmaku-wrap"></div>
+  <!-- 相親卡 Overlay -->
+  <div id="profile-overlay">
+    <img id="profile-img" src="" alt="" />
+    <div class="profile-sender" id="profile-sender"></div>
+    <div id="profile-countdown">10</div>
+  </div>
 
   <script>
     // ── 背景輪播 ──
@@ -192,6 +249,25 @@
       wrap.addEventListener('animationend', () => wrap.remove());
     }
 
+    function spawnSticker(sender, stickerUrl) {
+      const wrap = document.createElement('div');
+      wrap.className = 'dm-image';
+      const img = document.createElement('img');
+      img.src = stickerUrl;
+      img.alt = `${sender} 的貼圖`;
+      img.onerror = () => { console.warn('[sticker] 載入失敗:', stickerUrl); wrap.remove(); };
+      const tag = document.createElement('div');
+      tag.className = 'dm-sender-tag';
+      tag.textContent = `💬 ${sender}`;
+      wrap.appendChild(img);
+      wrap.appendChild(tag);
+      wrap.style.top = Math.min(laneToTop(pickLane()), 65) + 'vh';
+      const dur = 14 + Math.random() * 4;
+      wrap.style.animationDuration = dur + 's';
+      dmWrap.appendChild(wrap);
+      wrap.addEventListener('animationend', () => wrap.remove());
+    }
+
     // ── WebSocket ──
     let ws, wsRetry = 2000;
 
@@ -201,14 +277,50 @@
       ws.onopen  = () => { wsRetry = 2000; };
       ws.onmessage = e => {
         const d = JSON.parse(e.data);
-        if (d.type === 'text')    spawnText(d.sender_name, d.content, false);
-        else if (d.type === 'default') spawnText('', d.content, true);
-        else if (d.type === 'image')   spawnImage(d.sender_name, d.file_path);
+        if (d.type === 'text')          spawnText(d.sender_name, d.content, false);
+        else if (d.type === 'default')  spawnText('', d.content, true);
+        else if (d.type === 'image')    spawnImage(d.sender_name, d.file_path);
+        else if (d.type === 'sticker')  spawnSticker(d.sender_name, d.sticker_url);
+        else if (d.type === 'profile')  showProfileCard(d.image_path, d.sender_name);
       };
       ws.onclose = () => { setTimeout(connect, wsRetry); wsRetry = Math.min(wsRetry * 1.5, 15000); };
     }
 
     connect();
+
+    // ── 相親卡全螢幕顯示（10秒後自動收起）──
+    let profileTimer = null;
+    let profileCountdownInterval = null;
+
+    function showProfileCard(imagePath, senderName) {
+      const overlay  = document.getElementById('profile-overlay');
+      const img      = document.getElementById('profile-img');
+      const sender   = document.getElementById('profile-sender');
+      const countdown= document.getElementById('profile-countdown');
+
+      // 清除舊 timer
+      if (profileTimer) { clearTimeout(profileTimer); profileTimer = null; }
+      if (profileCountdownInterval) { clearInterval(profileCountdownInterval); profileCountdownInterval = null; }
+
+      img.src = imagePath;
+      sender.textContent = senderName ? `♥ ${senderName} 的相親卡` : '';
+      overlay.classList.add('visible');
+
+      // 倒數計時
+      let sec = 10;
+      countdown.textContent = sec;
+      profileCountdownInterval = setInterval(() => {
+        sec--;
+        countdown.textContent = sec;
+        if (sec <= 0) { clearInterval(profileCountdownInterval); profileCountdownInterval = null; }
+      }, 1000);
+
+      // 10 秒後隱藏
+      profileTimer = setTimeout(() => {
+        overlay.classList.remove('visible');
+        profileTimer = null;
+      }, 10000);
+    }
 
     // ── 防螢幕睡眠 ──
     async function wakeLock() {
