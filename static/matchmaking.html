@@ -3,8 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
   <title>單身特供菜單 — Bella & Kai</title>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;700&family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400;1,600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css" />
+
   <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -172,12 +177,56 @@
       margin: 1.2rem 0;
     }
 
-    /* ── 風格選擇 ── */
-    .style-grid {
+    /* ── 模式選擇 ── */
+    .mode-grid {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: 1fr 1fr;
       gap: 0.6rem;
       margin-top: 0.5rem;
+    }
+    .mode-btn {
+      border: 2px solid rgba(44,74,48,0.22);
+      border-radius: 8px;
+      background: rgba(44,74,48,0.04);
+      padding: 0.9rem 0.5rem;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.3rem;
+      transition: all 0.2s;
+      font-family: 'Noto Serif TC', serif;
+      text-align: center;
+      width: 100%;
+    }
+    .mode-btn:active { transform: scale(0.97); }
+    .mode-btn.active {
+      border-color: #2c4a30;
+      box-shadow: 0 0 0 2px #2c4a30;
+      background: rgba(44,74,48,0.1);
+    }
+    .mode-icon { font-size: 1.8rem; line-height: 1; }
+    .mode-name {
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: #2c4a30;
+      letter-spacing: 0.05em;
+    }
+    .mode-desc {
+      font-size: 0.6rem;
+      color: rgba(44,74,48,0.52);
+      line-height: 1.5;
+    }
+
+    /* ── 風格選擇格線 ── */
+    .style-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 0.6rem;
+      margin-top: 0.5rem;
+    }
+    @media (min-width: 480px) {
+      .style-grid { grid-template-columns: repeat(3, 1fr); }
     }
     .style-option {
       position: relative;
@@ -199,9 +248,9 @@
     .style-card:active { transform: scale(0.97); }
     .style-thumb {
       width: 100%;
-      aspect-ratio: 2/3;
+      aspect-ratio: 3/2;
       object-fit: cover;
-      object-position: top;
+      object-position: center;
       display: block;
     }
     .style-label {
@@ -236,6 +285,115 @@
       box-shadow: 0 1px 4px rgba(0,0,0,0.3);
     }
     .style-option input:checked ~ .style-check { display: flex; }
+
+    /* ── 所有風格縮圖（CSS 模擬，左側照片區 + 右側資訊區）── */
+    .raw-thumb {
+      width: 100%;
+      aspect-ratio: 3/2;
+      display: flex;
+      overflow: hidden;
+    }
+    .raw-thumb-left {
+      width: 42%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.4rem;
+      opacity: 0.45;
+      flex-shrink: 0;
+    }
+    .raw-thumb-right {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 0 7px;
+      gap: 3px;
+    }
+    .raw-thumb-name { font-size: 0.58rem; font-weight: 700; }
+    .raw-thumb-line { font-size: 0.43rem; opacity: 0.6; }
+
+    /* Korean */
+    .raw-korean .raw-thumb-left  { background: #F2EDE4; border-right: 1.5px solid #C9A96E; }
+    .raw-korean .raw-thumb-right { background: #FAF6F0; color: #3C2F1E; }
+    .raw-korean .raw-thumb-name  { color: #C9A96E; }
+
+    /* Movie */
+    .raw-movie .raw-thumb-left  { background: #1C1C1C; border-right: 1px solid #F5C23A; }
+    .raw-movie .raw-thumb-right { background: #1C1C1C; color: #EFEFEF; }
+    .raw-movie .raw-thumb-name  { color: #F5C23A; font-size: 0.62rem; }
+    .raw-movie .raw-thumb-line  { opacity: 0.5; }
+
+    /* Japanese */
+    .raw-japanese .raw-thumb-left  { background: #FAFAFA; border-right: 2px solid #CC3333; }
+    .raw-japanese .raw-thumb-right { background: #FFFFFF; color: #1A1A1A; }
+    .raw-japanese .raw-thumb-name  { font-weight: 900; letter-spacing: 0.05em; }
+
+    /* AI 美化縮圖 */
+    .ai-romantic .raw-thumb-left  { background: linear-gradient(160deg, #ffe4ef 0%, #fff3e6 100%); border-right: 1.5px solid #C9A84C; }
+    .ai-romantic .raw-thumb-right { background: #FFF8F0; color: #5a3a1a; }
+    .ai-romantic .raw-thumb-name  { color: #C9A84C; font-style: italic; }
+
+    .ai-magazine .raw-thumb-left  { background: linear-gradient(160deg, #e8e8e8 0%, #f5f5f5 100%); border-right: 1.5px solid #B8972E; }
+    .ai-magazine .raw-thumb-right { background: #FFFFFF; color: #111; }
+    .ai-magazine .raw-thumb-name  { font-weight: 900; letter-spacing: 0.06em; font-size: 0.56rem; }
+
+    .ai-figure .raw-thumb-left  { background: linear-gradient(160deg, #e8f0ff 0%, #f0e8ff 100%); border-right: 1.5px solid #CC2936; }
+    .ai-figure .raw-thumb-right { background: #F5F0E8; color: #1a1a1a; }
+    .ai-figure .raw-thumb-name  { color: #CC2936; font-weight: 900; }
+
+    /* AI 標籤角章 */
+    .ai-badge {
+      position: absolute;
+      top: 5px; left: 5px;
+      background: rgba(0,0,0,0.45);
+      color: #fff;
+      font-size: 0.5rem;
+      padding: 1px 5px;
+      border-radius: 3px;
+      letter-spacing: 0.05em;
+    }
+
+    /* ── 裁切工具 ── */
+    .crop-hint {
+      font-size: 0.7rem;
+      color: rgba(44,74,48,0.62);
+      text-align: center;
+      margin: 0.5rem 0 0.6rem;
+      line-height: 1.6;
+    }
+    .crop-wrap {
+      border-radius: 6px;
+      overflow: hidden;
+      background: #111;
+      max-height: 360px;
+    }
+    #crop-img { display: block; max-width: 100%; }
+    .btn-crop {
+      width: 100%;
+      margin-top: 0.7rem;
+      background: rgba(44,74,48,0.1);
+      color: #2c4a30;
+      font-family: 'Noto Serif TC', serif;
+      font-weight: 700;
+      font-size: 0.88rem;
+      padding: 0.6rem;
+      border: 1.5px solid rgba(44,74,48,0.35);
+      border-radius: 5px;
+      cursor: pointer;
+      letter-spacing: 0.08em;
+      transition: all 0.2s;
+    }
+    .btn-crop:hover { background: rgba(44,74,48,0.17); }
+    .crop-done-badge {
+      display: none;
+      text-align: center;
+      font-size: 0.73rem;
+      color: #2c4a30;
+      margin-top: 0.45rem;
+      font-weight: 700;
+    }
+    .crop-done-badge.show { display: block; }
 
     /* ── AI 說明 ── */
     .ai-note {
@@ -300,28 +458,25 @@
       color: #8b2020;
     }
 
-    /* ── 結果區塊（產圖後顯示）── */
+    /* ── 結果區塊 ── */
     #result-section {
       display: none;
       margin-top: 1.2rem;
       text-align: center;
     }
     #result-section.visible { display: block; }
-
     .result-title {
       font-size: 0.8rem;
       color: rgba(44,74,48,0.6);
       letter-spacing: 0.1em;
       margin-bottom: 0.6rem;
     }
-
     #result-img {
       width: 100%;
       border-radius: 8px;
       border: 2px solid rgba(44,74,48,0.2);
       display: block;
     }
-
     .btn-download {
       display: inline-flex;
       align-items: center;
@@ -341,7 +496,6 @@
       letter-spacing: 0.05em;
     }
     .btn-download:hover { opacity: 0.85; }
-
     .screen-note {
       margin-top: 0.5rem;
       font-size: 0.72rem;
@@ -387,6 +541,9 @@
       vertical-align: middle;
       margin-right: 6px;
     }
+
+    /* ── 隱藏區塊 ── */
+    .hidden { display: none !important; }
   </style>
 </head>
 <body>
@@ -401,7 +558,7 @@
 
     <div class="card-body">
 
-      <!-- 照片上傳 -->
+      <!-- ① 照片上傳 -->
       <div class="photo-section">
         <div class="photo-upload-area" onclick="document.getElementById('photo-input').click()">
           <div class="photo-circle" id="photo-circle">
@@ -418,9 +575,9 @@
         </div>
         <div class="photo-hint">點擊上傳大頭照（必填）</div>
       </div>
-      <input type="file" id="photo-input" accept="image/*" capture="user" />
+      <input type="file" id="photo-input" accept="image/*" />
 
-      <!-- 基本資料 -->
+      <!-- ② 基本資料 -->
       <div class="section-title">基本資料</div>
 
       <div class="field">
@@ -457,7 +614,7 @@
 
       <hr class="divider" />
 
-      <!-- 關於我 -->
+      <!-- ③ 關於我 -->
       <div class="section-title">About Me — 關於我</div>
       <div class="field">
         <label>第一點</label>
@@ -474,7 +631,7 @@
 
       <hr class="divider" />
 
-      <!-- 理想型 -->
+      <!-- ④ 理想型 -->
       <div class="section-title">Ideal Type — 理想型</div>
       <div class="field">
         <label>第一點</label>
@@ -491,55 +648,163 @@
 
       <hr class="divider" />
 
-      <!-- 風格選擇 -->
-      <div class="section-title">選擇卡片風格</div>
-      <div class="style-grid">
-
-        <label class="style-option">
-          <input type="radio" name="style" value="romantic" checked />
-          <div class="style-card">
-            <img class="style-thumb" src="preview_romantic.png" alt="浪漫婚禮風格預覽" />
-            <div class="style-label">
-              <span class="style-name">🌸 浪漫婚禮</span>
-              <span class="style-desc">粉金花卉・溫馨</span>
-            </div>
-          </div>
-          <div class="style-check">✓</div>
-        </label>
-
-        <label class="style-option">
-          <input type="radio" name="style" value="magazine" />
-          <div class="style-card">
-            <img class="style-thumb" src="preview_magazine.png" alt="雜誌封面風格預覽" />
-            <div class="style-label">
-              <span class="style-name">✨ 雜誌封面</span>
-              <span class="style-desc">白金極簡・高端</span>
-            </div>
-          </div>
-          <div class="style-check">✓</div>
-        </label>
-
-        <label class="style-option">
-          <input type="radio" name="style" value="figure" />
-          <div class="style-card">
-            <img class="style-thumb" src="preview_figure.png" alt="公仔立牌風格預覽" />
-            <div class="style-label">
-              <span class="style-name">🎮 公仔立牌</span>
-              <span class="style-desc">日系收藏・話題</span>
-            </div>
-          </div>
-          <div class="style-check">✓</div>
-        </label>
-
+      <!-- ⑤ 模式選擇 -->
+      <div class="section-title">選擇出圖方式</div>
+      <div class="mode-grid">
+        <button type="button" class="mode-btn" id="mode-btn-raw" data-mode="raw" onclick="selectMode('raw')">
+          <span class="mode-icon">🖼️</span>
+          <span class="mode-name">原圖直出</span>
+          <span class="mode-desc">保留本人樣貌<br>套入精美模板</span>
+        </button>
+        <button type="button" class="mode-btn" id="mode-btn-ai" data-mode="ai" onclick="selectMode('ai')">
+          <span class="mode-icon">✨</span>
+          <span class="mode-name">AI 美化</span>
+          <span class="mode-desc">AI 重新詮釋<br>生成藝術風格</span>
+        </button>
       </div>
 
-      <!-- AI 說明 -->
-      <div class="ai-note">
-        ✨ 送出後由 <strong>GPT AI</strong> 依照你選擇的風格產圖<br>
-        約需 <strong>15–30 秒</strong>，完成後可下載並自動發送至婚禮大螢幕 🎉
+      <!-- ⑥-A 原圖直出 — 風格選擇 -->
+      <div id="raw-section" class="hidden">
+        <div class="section-title" style="margin-top:1rem;">選擇模板風格</div>
+        <div class="style-grid">
+
+          <label class="style-option">
+            <input type="radio" name="raw-style" value="raw_korean" onchange="onRawStyleChange()" />
+            <div class="style-card">
+              <div class="raw-thumb raw-korean">
+                <div class="raw-thumb-left">👤</div>
+                <div class="raw-thumb-right">
+                  <span class="raw-thumb-name">SINGLE · 2026</span>
+                  <span class="raw-thumb-line">姓名</span>
+                  <span class="raw-thumb-line">關於我 · 理想型</span>
+                  <span class="raw-thumb-line">♥ Bella & Kai</span>
+                </div>
+              </div>
+              <div class="style-label">
+                <span class="style-name">🫧 韓系喜帖</span>
+                <span class="style-desc">乳白金線・典雅</span>
+              </div>
+            </div>
+            <div class="style-check">✓</div>
+          </label>
+
+          <label class="style-option">
+            <input type="radio" name="raw-style" value="raw_movie" onchange="onRawStyleChange()" />
+            <div class="style-card">
+              <div class="raw-thumb raw-movie">
+                <div class="raw-thumb-left">👤</div>
+                <div class="raw-thumb-right">
+                  <span class="raw-thumb-name">單身特輯</span>
+                  <span class="raw-thumb-line">姓名</span>
+                  <span class="raw-thumb-line">關於我 · 理想型</span>
+                  <span class="raw-thumb-line">限量首映</span>
+                </div>
+              </div>
+              <div class="style-label">
+                <span class="style-name">🎬 復古電影</span>
+                <span class="style-desc">港式海報・話題</span>
+              </div>
+            </div>
+            <div class="style-check">✓</div>
+          </label>
+
+          <label class="style-option">
+            <input type="radio" name="raw-style" value="raw_japanese" onchange="onRawStyleChange()" />
+            <div class="style-card">
+              <div class="raw-thumb raw-japanese">
+                <div class="raw-thumb-left">👤</div>
+                <div class="raw-thumb-right">
+                  <span class="raw-thumb-name">PROFILE</span>
+                  <span class="raw-thumb-line">姓名</span>
+                  <span class="raw-thumb-line">ABOUT ME</span>
+                  <span class="raw-thumb-line">MY TYPE</span>
+                </div>
+              </div>
+              <div class="style-label">
+                <span class="style-name">📖 日系雜誌</span>
+                <span class="style-desc">極簡排版・文青</span>
+              </div>
+            </div>
+            <div class="style-check">✓</div>
+          </label>
+
+        </div>
+
+        <!-- 裁切工具 -->
+        <div id="crop-section" class="hidden">
+          <div class="section-title" style="margin-top:1rem;">裁切你的照片</div>
+          <p class="crop-hint">拖曳調整位置與範圍，讓臉部置中<br>確認後點下方按鈕</p>
+          <div class="crop-wrap">
+            <img id="crop-img" src="" alt="裁切" />
+          </div>
+          <button type="button" class="btn-crop" id="crop-confirm-btn">✓ 確認裁切</button>
+          <div class="crop-done-badge" id="crop-done-badge">✅ 裁切完成！可送出或重新調整</div>
+        </div>
+
+        <!-- 原圖說明 -->
+        <div class="ai-note" id="note-raw">
+          📸 照片直接合成至模板，<strong>不經 AI 修改人物</strong>，保留本人樣貌<br>
+          約需 <strong>15–30 秒</strong>，完成後可下載並自動發送至大螢幕 🎉
+        </div>
+        <div class="ai-note" style="margin-top:0.5rem; background:rgba(180,100,20,0.08); border-color:rgba(180,100,20,0.25);">
+          💡 螢幕只有一個，單身的人卻這麼多！請控制您大膽的想法，讓大家都有機會成功脫魯 ✨
+        </div>
       </div>
 
-      <!-- 送出 -->
+      <!-- ⑥-B AI 美化 — 風格選擇 -->
+      <div id="ai-section" class="hidden">
+        <div class="section-title" style="margin-top:1rem;">選擇 AI 風格</div>
+        <div class="style-grid">
+
+          <label class="style-option">
+            <input type="radio" name="ai-style" value="romantic" checked />
+            <div class="style-card">
+              <img class="style-thumb" src="/static/style_romantic.png" alt="浪漫婚禮風格預覽" />
+              <div class="style-label">
+                <span class="style-name">🌸 浪漫婚禮</span>
+                <span class="style-desc">粉金花卉・溫馨</span>
+              </div>
+            </div>
+            <div class="style-check">✓</div>
+          </label>
+
+          <label class="style-option">
+            <input type="radio" name="ai-style" value="magazine" />
+            <div class="style-card">
+              <img class="style-thumb" src="/static/style_magazine.png" alt="雜誌封面風格預覽" />
+              <div class="style-label">
+                <span class="style-name">✨ 雜誌封面</span>
+                <span class="style-desc">白金極簡・高端</span>
+              </div>
+            </div>
+            <div class="style-check">✓</div>
+          </label>
+
+          <label class="style-option">
+            <input type="radio" name="ai-style" value="figure" />
+            <div class="style-card">
+              <img class="style-thumb" src="/static/style_figure.png" alt="公仔立牌風格預覽" />
+              <div class="style-label">
+                <span class="style-name">🎮 公仔立牌</span>
+                <span class="style-desc">日系收藏・話題</span>
+              </div>
+            </div>
+            <div class="style-check">✓</div>
+          </label>
+
+        </div>
+
+        <!-- AI 說明 -->
+        <div class="ai-note" id="note-ai">
+          ✨ 送出後由 <strong>GPT AI</strong> 依照你選擇的風格產圖<br>
+          約需 <strong>15–30 秒</strong>，完成後可下載並自動發送至婚禮大螢幕 🎉
+        </div>
+        <div class="ai-note" style="margin-top:0.5rem; background:rgba(180,100,20,0.08); border-color:rgba(180,100,20,0.25);">
+          💡 螢幕只有一個，單身的人卻這麼多！請控制您大膽的想法，讓大家都有機會成功脫魯 ✨
+        </div>
+      </div>
+
+      <!-- ⑦ 送出 -->
       <button class="btn-submit" id="submit-btn" disabled>產生我的相親卡 ✨</button>
 
       <div id="status"></div>
@@ -564,20 +829,95 @@
 
   <div class="footer-page">Bella &amp; Kai Wedding 2026</div>
 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
   <script>
-    const photoInput   = document.getElementById('photo-input');
-    const photoPreview = document.getElementById('photo-preview');
-    const placeholder  = document.getElementById('photo-placeholder');
-    const nameInput    = document.getElementById('name-input');
-    const submitBtn    = document.getElementById('submit-btn');
-    const statusEl     = document.getElementById('status');
+    // ── DOM refs ──
+    const photoInput    = document.getElementById('photo-input');
+    const photoPreview  = document.getElementById('photo-preview');
+    const placeholder   = document.getElementById('photo-placeholder');
+    const nameInput     = document.getElementById('name-input');
+    const submitBtn     = document.getElementById('submit-btn');
+    const statusEl      = document.getElementById('status');
     const resultSection = document.getElementById('result-section');
-    const resultImg    = document.getElementById('result-img');
-    const downloadBtn  = document.getElementById('download-btn');
+    const resultImg     = document.getElementById('result-img');
+    const downloadBtn   = document.getElementById('download-btn');
 
-    let photoFile = null;
+    // ── 狀態 ──
+    let photoFile        = null;   // 原始上傳檔案
+    let croppedPhotoBlob = null;   // 裁切結果（原圖直出用）
+    let currentMode      = null;   // 'raw' | 'ai'
+    let cropper          = null;
 
-    // ── 照片預覽 ──
+    // ── 模式切換 ──
+    function selectMode(mode) {
+      currentMode = mode;
+      document.getElementById('mode-btn-raw').classList.toggle('active', mode === 'raw');
+      document.getElementById('mode-btn-ai').classList.toggle('active', mode === 'ai');
+      document.getElementById('raw-section').classList.toggle('hidden', mode !== 'raw');
+      document.getElementById('ai-section').classList.toggle('hidden', mode !== 'ai');
+
+      if (mode === 'ai') {
+        // 切換到 AI 模式時銷毀裁切器
+        if (cropper) { cropper.destroy(); cropper = null; }
+        document.getElementById('crop-section').classList.add('hidden');
+      } else {
+        updateCropSection();
+      }
+      checkReady();
+    }
+
+    // ── 原圖風格切換 ──
+    function onRawStyleChange() {
+      updateCropSection();
+      checkReady();
+    }
+
+    // ── 更新裁切區塊的顯示狀態 ──
+    function updateCropSection() {
+      const rawStyleSelected = document.querySelector('input[name="raw-style"]:checked');
+      const shouldShow = currentMode === 'raw' && photoFile && rawStyleSelected;
+      document.getElementById('crop-section').classList.toggle('hidden', !shouldShow);
+      if (shouldShow && !cropper) initCropper();
+    }
+
+    // ── 初始化 Cropper.js ──
+    function initCropper() {
+      if (cropper) { cropper.destroy(); cropper = null; }
+      const cropImg = document.getElementById('crop-img');
+      const reader  = new FileReader();
+      reader.onload = e => {
+        cropImg.onload = () => {
+          cropper = new Cropper(cropImg, {
+            aspectRatio: 640 / 1024,   // 左側照片區比例（5:8 直式）
+            viewMode: 1,
+            dragMode: 'move',
+            autoCropArea: 0.85,
+            responsive: true,
+            checkCrossOrigin: false,
+          });
+        };
+        cropImg.src = e.target.result;
+      };
+      reader.readAsDataURL(photoFile);
+    }
+
+    // ── 確認裁切 ──
+    document.getElementById('crop-confirm-btn').addEventListener('click', () => {
+      if (!cropper) return;
+      const canvas = cropper.getCroppedCanvas({ width: 640, height: 1024 });
+      canvas.toBlob(blob => {
+        croppedPhotoBlob = blob;
+        // 圓形預覽更新為裁切後的樣子
+        const url = URL.createObjectURL(blob);
+        photoPreview.src = url;
+        photoPreview.style.display = 'block';
+        placeholder.style.display = 'none';
+        document.getElementById('crop-done-badge').classList.add('show');
+        checkReady();
+      }, 'image/jpeg', 0.92);
+    });
+
+    // ── 照片上傳 ──
     photoInput.addEventListener('change', () => {
       const file = photoInput.files[0];
       if (!file) return;
@@ -585,7 +925,13 @@
         showStatus('error', '照片太大，請選擇 10MB 以內的圖片');
         return;
       }
-      photoFile = file;
+      photoFile        = file;
+      croppedPhotoBlob = null;
+      // 重置裁切器
+      if (cropper) { cropper.destroy(); cropper = null; }
+      document.getElementById('crop-done-badge').classList.remove('show');
+
+      // 圓形預覽顯示原圖
       const reader = new FileReader();
       reader.onload = e => {
         photoPreview.src = e.target.result;
@@ -593,24 +939,47 @@
         placeholder.style.display = 'none';
       };
       reader.readAsDataURL(file);
+
+      updateCropSection();
       checkReady();
     });
 
     nameInput.addEventListener('input', checkReady);
 
+    // ── 啟用/停用送出按鈕 ──
     function checkReady() {
-      submitBtn.disabled = !(photoFile && nameInput.value.trim().length > 0);
+      const hasName = nameInput.value.trim().length > 0;
+      if (currentMode === 'raw') {
+        const rawStyleOk = !!document.querySelector('input[name="raw-style"]:checked');
+        submitBtn.disabled = !(croppedPhotoBlob && hasName && rawStyleOk);
+      } else if (currentMode === 'ai') {
+        submitBtn.disabled = !(photoFile && hasName);
+      } else {
+        submitBtn.disabled = true;
+      }
     }
 
     // ── 送出 ──
     submitBtn.addEventListener('click', async () => {
-      if (!photoFile || !nameInput.value.trim()) return;
+      if (!nameInput.value.trim()) return;
 
-      const selectedStyle = document.querySelector('input[name="style"]:checked').value;
+      let photoToSend, selectedStyle, loadingMsg;
+
+      if (currentMode === 'raw') {
+        if (!croppedPhotoBlob) return;
+        photoToSend   = croppedPhotoBlob;
+        selectedStyle = document.querySelector('input[name="raw-style"]:checked').value;
+        loadingMsg    = '<span class="spinner"></span> AI 正在生成模板並合成你的照片，約需 15–30 秒…';
+      } else {
+        if (!photoFile) return;
+        photoToSend   = photoFile;
+        selectedStyle = document.querySelector('input[name="ai-style"]:checked').value;
+        loadingMsg    = '<span class="spinner"></span> AI 正在為你產圖，約需 15–30 秒…';
+      }
 
       submitBtn.disabled = true;
       resultSection.classList.remove('visible');
-      showStatus('loading', '<span class="spinner"></span> AI 正在為你產圖，約需 20 秒…');
+      showStatus('loading', loadingMsg);
 
       const form = new FormData();
       form.append('name',       nameInput.value.trim());
@@ -626,17 +995,17 @@
       form.append('ideal2',     document.getElementById('ideal2-input').value.trim());
       form.append('ideal3',     document.getElementById('ideal3-input').value.trim());
       form.append('style',      selectedStyle);
-      form.append('photo',      photoFile);
+      form.append('photo',      photoToSend,
+                  currentMode === 'raw' ? 'cropped.jpg' : (photoFile ? photoFile.name : 'photo.jpg'));
 
       try {
         const res  = await fetch('/api/profile-upload', { method: 'POST', body: form });
         const data = await res.json();
 
         if (res.ok && data.image_url) {
-          showStatus('success', '<span class="success-icon">🎉</span> 產圖成功！已發送至大螢幕');
-          // 顯示圖片與下載按鈕
-          resultImg.src = data.image_url;
-          downloadBtn.href = data.image_url;
+          showStatus('success', '<span class="success-icon">🎉</span> 相親卡完成！已發送至大螢幕');
+          resultImg.src      = data.image_url;
+          downloadBtn.href   = data.image_url;
           downloadBtn.download = `相親卡_${nameInput.value.trim()}.png`;
           resultSection.classList.add('visible');
         } else {

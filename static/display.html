@@ -172,10 +172,20 @@
     const bgWrap = document.getElementById('bg-wrap');
     let slides = [], currentSlide = 0;
 
+    // Fisher-Yates shuffle：每張照片只出現一次，順序隨機
+    function shuffle(arr) {
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr;
+    }
+
     async function initSlideshow() {
       try {
         const photos = await (await fetch('/api/bg-photos')).json();
         if (!photos || photos.length === 0) return;
+        shuffle(photos);   // 載入時打亂一次，之後按打亂順序循環
         photos.forEach((name, i) => {
           const div = document.createElement('div');
           div.className = 'bg-slide' + (i === 0 ? ' active' : '');

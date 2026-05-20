@@ -1,0 +1,25 @@
+{
+  "name": "Bella & Kai ♥ 婚禮彈幕",
+  "short_name": "婚禮彈幕",
+  "description": "Bella & Kai 婚禮大螢幕彈幕系統",
+  "start_url": "/display",
+  "scope": "/",
+  "display": "fullscreen",
+  "background_color": "#0d0a06",
+  "theme_color": "#c9a96e",
+  "orientation": "landscape",
+  "icons": [
+    {
+      "src": "/static/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/static/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

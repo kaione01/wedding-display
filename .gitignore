@@ -10,6 +10,7 @@ unmatched_guests.log
 
 # ── 婚紗照（通常太大，自行放入）──
 static/wedding_bg/
+static/seating/
 
 # ── 系統產生的暫存檔 ──
 .tunnel.log

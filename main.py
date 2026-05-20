@@ -23,6 +23,7 @@ from pathlib import Path
 import aiofiles
 import httpx
 import uvicorn
+from PIL import Image, ImageOps, ImageFilter, ImageDraw
 from openai import AsyncOpenAI
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
@@ -793,17 +794,17 @@ def _build_ai_prompt(fields: dict, style: str) -> str:
     info_line   = "  ·  ".join(filter(None, [age, height, location, occupation]))
 
     if style == "magazine":
-        return f"""這是一張高端婚禮雜誌封面風格的單身自我介紹卡，直式 1024x1536，
+        return f"""這是一張高端婚禮相親自介卡，橫式 1536x1024，
 參考 VOGUE WEDDING 雜誌版面與《愛的迫降》電影海報設計感。
 
 【版面配置】
-上半部（55%）：專業棚拍風格人像照，照片中的人物保留原始樣貌，柔光、簡潔灰背景，自信表情
-下半部（45%）：乾淨白底資訊區，細金線分隔欄位
+左半部（佔45%，全高）：將提供的參考照片中的人物融入，棚拍質感，柔光簡潔灰背景，自信表情，精緻人像攝影風格，右側邊緣柔和淡出
+右半部（佔55%）：乾淨白底資訊區，細金線分隔欄位
 
 【完整文字內容】（精確渲染以下中文，不得錯字）
-雜誌小標籤（金色）：「SINGLE & READY」
-封面主標題（大）：「{name}」
-Tagline：「今晚有機會脫單嗎？」
+右側頂部金色小標：「SINGLE & READY ✦」
+封面主標題（超大字）：「{name}」
+副標：「今晚有機會脫單嗎？」
 資訊橫排：「{info_line}」
 {"拿手好戲：" + specialty if specialty else ""}
 金色細分隔線
@@ -811,25 +812,25 @@ Tagline：「今晚有機會脫單嗎？」
 {about_lines}
 「💕 理想型」
 {ideal_lines}
-右下角金色斜體：「♥ Bella & Kai 2026.05.24」
+右下角金色斜體：「♥ Bella & Kai  2026.05.24」
 
 【色調】純白 #FFFFFF、金色 #B8972E、暖灰 #F5F3F0
 【字體】姓名用粗體現代中文，資料用細體無襯線
-【限制】版面極簡，不加多餘裝飾，金線只用作分隔，所有中文必須正確"""
+【限制】版面極簡不加多餘裝飾，金線只用作分隔，所有中文必須正確"""
 
     elif style == "figure":
-        return f"""這是一張公仔立牌產品包裝風格的單身自我介紹卡，直式 1024x1536，
+        return f"""這是一張公仔立牌產品包裝風格的婚禮相親自介卡，橫式 1536x1024，
 參考日本壽屋 ARTFX 系列公仔商品包裝設計。
 
 【版面配置】
-上半部（60%）：照片中的人物以光澤3D塑膠公仔／壓克力立牌方式呈現，
-站在透明壓克力底座上，保留人物真實面貌與服裝特徵，
-旁邊有小道具代表其興趣。白色背景，產品攝影打光，柔和陰影。
-下半部（40%）：產品規格卡片區，米白底色，頂部有紅色圓形徽章
+左半部（佔45%）：將提供的參考照片中的人物以光澤3D塑膠公仔／壓克力立牌方式重新詮釋，
+站在透明壓克力底座上，保留人物臉部特徵，休閒穿著，
+旁邊小道具：筆電、登山靴、橘色貓咪。白色背景，產品攝影打光，柔和陰影。
+右半部（佔55%）：產品規格卡片區，米白底色，頂部紅色圓形徽章
 
 【完整文字內容】（精確渲染以下中文，不得錯字）
-紅色徽章：「單身招募中」
-產品名稱（大）：「{name}」
+右側頂部紅色徽章：「單身招募中」
+右側產品名稱（大）：「{name}」
 副標：「今晚有機會脫單嗎？」
 規格區塊：
 年齡：{age} ｜ 身高：{height}
@@ -839,20 +840,19 @@ Tagline：「今晚有機會脫單嗎？」
 {about_lines}
 「理想型」
 {ideal_lines}
-底部印章：「♥ Bella & Kai 2026.05.24 Official Edition」
+底部印章：「♥ Bella & Kai  2026.05.24  Official Edition」
 
 【色調】白底、紅色徽章 #CC2936、米黃規格區 #F5F0E8、金色點綴
-【限制】公仔保留寫實人類五官比例，所有中文必須正確"""
+【限制】公仔保留人物臉部特徵與比例，所有中文必須正確"""
 
     else:  # romantic (default)
-        return f"""這是一張婚禮現場使用的單身自我介紹卡，直式 1024x1536，
+        return f"""這是一張婚禮現場使用的單身自我介紹卡，橫式 1536x1024，
 風格參考《單身即地獄》的精緻感與台灣婚禮請柬的溫暖氛圍。
 
 【版面配置】
-頂部：照片中的人物以圓形 Polaroid 邊框呈現，置中，保留原始樣貌
-照片下方：姓名大標題
-中間：資料資訊卡
-下方左右各一欄：「關於我」與「理想型」
+左半部（佔45%，全高）：將提供的參考照片中的人物融入，Polaroid 邊框風格點綴，
+自信微笑，右側邊緣柔和漸層淡出融入背景
+右半部（佔55%）：奶油白底資訊區，粉金裝飾花邊，上下留白
 
 【完整文字內容】（精確渲染以下中文，不得錯字）
 頂部小標：「單身招募中 💘」
@@ -867,30 +867,191 @@ Tagline：「今晚有機會脫單嗎？」
 {about_lines}
 💕 理想型
 {ideal_lines}
-底部：「♥ Bella & Kai 2026.05.24」
+底部：「♥ Bella & Kai  2026.05.24」
 
 【色調】奶油白 #FFF8F0、香檳金 #C9A84C、淡粉 #FFD6E0
 【裝飾】小愛心、花瓣、柔和光暈、戒指小圖示，點綴但不雜亂
 【字體】姓名用優雅手寫體，資料用清晰無襯線體
-【限制】不得出現多餘人物、所有中文必須正確"""
+【限制】不得出現多餘人物，所有中文必須正確"""
+
+
+def _build_raw_template_prompt(fields: dict, style: str) -> str:
+    """原圖直出模式：只產右側資訊模板（左側 640px 留空給 Pillow 貼照片）"""
+    name       = fields.get("name", "")
+    age        = fields.get("age", "")
+    height     = fields.get("height", "")
+    location   = fields.get("location", "")
+    occupation = fields.get("occupation", "")
+    specialty  = fields.get("specialty", "")
+    about1     = fields.get("about1", "")
+    about2     = fields.get("about2", "")
+    about3     = fields.get("about3", "")
+    ideal1     = fields.get("ideal1", "")
+    ideal2     = fields.get("ideal2", "")
+    ideal3     = fields.get("ideal3", "")
+
+    about_lines = " · ".join(filter(None, [about1, about2, about3])) or "（未填寫）"
+    ideal_lines = " · ".join(filter(None, [ideal1, ideal2, ideal3])) or "（未填寫）"
+    info_line   = "  ·  ".join(filter(None, [age, height, location, occupation]))
+
+    if style == "raw_movie":
+        return f"""橫式 1536x1024 復古港式電影海報風格婚禮相親卡。
+
+【版面配置 — 最重要規則】
+左側 0-640px：純色深炭黑 #1C1C1C，四邊緣有泛黃膠片打孔邊框裝飾（只在最邊緣 20px 內），
+  中央 40-620px 範圍完全空白，不放任何文字、圖案或人物。
+右側 641-1536px：深炭黑 #1C1C1C 底，包含完整資訊版面。
+
+【右側文字內容】（精確渲染，不得錯字）
+頂部橘黃大字：「單身特輯」（仿舊毛筆標題風格）
+姓名超大白色粗黑體：「{name}」（懷舊電影字幕感）
+紅色腰帶橫條白字：「{info_line}」
+{f"拿手好戲：{specialty}" if specialty else ""}
+白色細分隔線
+關於我：{about_lines}
+理想型：{ideal_lines}
+底部印章：「♥ Bella & Kai Wedding 2026 · 限量首映」
+
+【色調】炭黑 #1C1C1C、橘黃 #F5C23A、白 #EFEFEF、紅 #C0392B
+【絕對禁止】左側 40-620px 範圍不得放任何文字或圖案，所有中文正確"""
+
+    elif style == "raw_japanese":
+        return f"""橫式 1536x1024 日系生活雜誌人物專訪版面婚禮相親卡。
+
+【版面配置 — 最重要規則】
+左側 0-640px：純白 #FFFFFF，
+  右邊緣（x=638-640）有 2px 黑線 (#1A1A1A) 作分隔，
+  左下角印「SINGLE ISSUE 2026」淺灰小字（在 y=960-1000 範圍）。
+  中央 0-600px 高度的區域完全空白，不放任何文字或人物。
+右側 641-1536px：純白 #FFFFFF 底，包含完整資訊版面。
+
+【右側文字內容】（精確渲染，不得錯字）
+頂部細紅色橫線 (#CC3333) + 英文欄位名「PROFILE」
+姓名大字黑色粗體：「{name}」（現代無襯線體感）
+資訊排列：
+  AGE  {age}　HEIGHT  {height}
+  CITY  {location}　JOB  {occupation}
+{f"拿手好戲：{specialty}" if specialty else ""}
+灰色細分隔線
+ABOUT ME — {about_lines}
+MY TYPE — {ideal_lines}
+右下角小字：「Bella & Kai Wedding 2026」
+
+【色調】白 #FFFFFF、黑 #1A1A1A、紅 #CC3333、淺灰 #AAAAAA
+【絕對禁止】左側 0-960px 高度中央區域不得放文字，版面極簡，所有中文正確"""
+
+    else:  # raw_korean
+        return f"""橫式 1536x1024 韓系婚禮喜帖風格婚禮相親卡。
+
+【版面配置 — 最重要規則】
+左側 0-640px：純色亞麻米白 #F2EDE4，
+  右邊緣（x=638-640）有細金線 (#C9A96E) 分隔，
+  四角各有極小乾燥花押花裝飾（僅在 30×30px 角落範圍，半透明）。
+  中央 30-610px 寬、30-994px 高的區域完全空白，不放任何文字或圖案。
+右側 641-1536px：乳白 #FAF6F0 底，包含完整資訊版面。
+
+【右側文字內容】（精確渲染，不得錯字）
+頂部燙金英文小標：「SINGLE · 2026」
+姓名大字深棕粗體：「{name}」（思源明朝體感）
+細字資訊：「{info_line}」
+{f"拿手好戲：{specialty}" if specialty else ""}
+金色細線分隔 (#C9A96E)
+關於我：{about_lines}
+理想型：{ideal_lines}
+右下角淡金斜體：「♥ Bella & Kai  2026.05.24」
+
+【色調】米白 #F2EDE4、金 #C9A96E、深棕文字 #3C2F1E、乳白 #FAF6F0
+【絕對禁止】左側中央區域不得放任何文字或圖案，所有中文正確"""
+
+
+async def _generate_profile_card_raw(fields: dict, photo_bytes: bytes, style: str) -> bytes:
+    """原圖直出：AI 產右側模板 → Pillow 將賓客照片貼至左側 640x1024"""
+    if not openai_client:
+        raise RuntimeError("OPENAI_API_KEY 未設定")
+
+    prompt = _build_raw_template_prompt(fields, style)
+
+    # 1. AI 生成模板（1536x1024，左側留空）
+    result = await openai_client.images.generate(
+        model="gpt-image-2",
+        prompt=prompt,
+        size="1536x1024",
+        quality="medium",
+        n=1,
+    )
+    img_data = result.data[0]
+    if img_data.b64_json:
+        template_bytes = base64.b64decode(img_data.b64_json)
+    elif img_data.url:
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.get(img_data.url)
+            template_bytes = resp.content
+    else:
+        raise RuntimeError("AI 模板生成失敗：無回傳影像")
+
+    # 2. Pillow 合成：將賓客照片填滿左側 640x1024
+    template_img = Image.open(io.BytesIO(template_bytes)).convert("RGB")
+    photo_img    = Image.open(io.BytesIO(photo_bytes)).convert("RGB")
+
+    # 裁切+縮放照片至 640x1024（ImageOps.fit = 填滿裁切，不留空白）
+    photo_fitted = ImageOps.fit(photo_img, (640, 1024), method=Image.LANCZOS)
+
+    # 貼上（完全覆蓋左側，不管 AI 在那邊生了什麼）
+    template_img.paste(photo_fitted, (0, 0))
+
+    # 3. 輸出 PNG bytes
+    out = io.BytesIO()
+    template_img.save(out, "PNG")
+    return out.getvalue()
+
+
+def _friendly_ai_error(e: Exception) -> str:
+    """把 OpenAI API 錯誤轉成賓客可以理解的中文提示"""
+    s = str(e).lower()
+
+    if "moderation_blocked" in s or "safety system" in s or "rejected" in s:
+        return "照片內容無法處理（可能含有版權或敏感內容），請換一張照片再試 📷"
+
+    if "invalid_image" in s or "could not process image" in s or "image_parse_error" in s:
+        return "照片格式無法讀取，請換成 JPG 或 PNG 格式再試 🖼️"
+
+    if "file_size" in s or "too large" in s or "maximum" in s:
+        return "照片檔案太大，請壓縮後再上傳（建議 5MB 以內）📦"
+
+    if "rate_limit" in s or "rate limit" in s:
+        return "目前產圖人數太多，請等待 30 秒後再試一次 ⏳"
+
+    if "quota" in s or "insufficient_quota" in s or "billing" in s:
+        return "系統暫時無法服務，請告知現場工作人員 🙏"
+
+    if "timeout" in s or "timed out" in s:
+        return "產圖等待超時，請稍後再試一次 ⏱️"
+
+    if "connection" in s or "network" in s or "connect" in s:
+        return "網路連線不穩，請確認網路後再試 📶"
+
+    if "server_error" in s or "internal_server" in s or "500" in s:
+        return "OpenAI 伺服器暫時忙碌，請稍後再試 🔧"
+
+    # 其他未知錯誤
+    return "產圖失敗，請稍後再試一次。若持續發生請告知現場工作人員 🙏"
 
 
 async def _generate_profile_card_ai(fields: dict, photo_bytes: bytes, style: str) -> bytes:
-    """呼叫 gpt-image-2 產生完整相親卡，回傳 PNG bytes"""
+    """呼叫 gpt-image-2 images.edit，將賓客照片融入相親卡設計，回傳 PNG bytes"""
     if not openai_client:
         raise RuntimeError("OPENAI_API_KEY 未設定")
 
     prompt = _build_ai_prompt(fields, style)
 
-    # 將賓客照片作為參考圖傳入（images.edit）
     photo_file = io.BytesIO(photo_bytes)
-    photo_file.name = "photo.jpg"
+    photo_file.name = "photo.png"
 
     result = await openai_client.images.edit(
         model="gpt-image-2",
         image=photo_file,
         prompt=prompt,
-        size="1024x1536",
+        size="1536x1024",
         quality="medium",
         n=1,
     )
@@ -924,6 +1085,7 @@ async def _process_profile_upload(fields: dict, photo_bytes: bytes):
         import traceback
         print(f"[ERROR] 相親菜單生成失敗: {e}")
         traceback.print_exc()
+        asyncio.ensure_future(notify_admin_error(f"相親菜單生成 / 賓客：{fields.get('name','未知')}", e))
 
 
 async def download_image_content(message_id: str) -> bytes | None:
@@ -1111,6 +1273,24 @@ def log_unmatched_guest(user_id: str, sender: str, name: str, contact: str):
     print(f"[座位查詢] 未匹配記錄 → {sender}（{name}）/ {contact}")
 
 
+async def notify_admin_error(source: str, error: Exception):
+    """系統發生錯誤時，推播通知管理員。"""
+    if not ADMIN_USER_IDS:
+        return
+    ts = datetime.now().strftime("%H:%M:%S")
+    msg = (
+        f"🚨 系統錯誤通知\n"
+        f"時間：{ts}\n"
+        f"來源：{source}\n"
+        f"錯誤：{str(error)[:200]}"
+    )
+    for uid in ADMIN_USER_IDS:
+        try:
+            await send_line_push(uid, msg)
+        except Exception as e:
+            print(f"[ERROR] 通知管理員失敗: {e}")
+
+
 async def notify_admins_unmatched(sender: str, name: str, contact: str):
     """未匹配賓客時，推播提醒管理員。"""
     if not ADMIN_USER_IDS:
@@ -1213,6 +1393,8 @@ async def _process_webhook_events(payload: dict):
             import traceback
             print(f"[Webhook ERROR] event 處理失敗: {exc}")
             traceback.print_exc()
+            _uid = event.get("source", {}).get("userId", "未知")
+            asyncio.ensure_future(notify_admin_error(f"Webhook 事件處理 / 用戶：{_uid}", exc))
             # 嘗試告訴用戶系統有問題（不會永遠卡住）
             if reply_token:
                 try:
@@ -1721,10 +1903,42 @@ async def websocket_endpoint(websocket: WebSocket):
 # ─────────────────────────────────────────────
 # 頁面與 API
 # ─────────────────────────────────────────────
+_NO_CACHE = {
+    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+    "Pragma":        "no-cache",
+    "Expires":       "0",
+}
+
 @app.get("/display", response_class=HTMLResponse)
 async def display_page():
     html_path = DOCS_DIR / "display.html"
     return HTMLResponse(content=html_path.read_text("utf-8"))
+
+
+@app.get("/sw.js")
+async def service_worker():
+    """PWA Service Worker — 必須從 root scope 提供才能控制 /display"""
+    return FileResponse(
+        str(STATIC_DIR / "sw-display.js"),
+        media_type="application/javascript",
+        headers={"Service-Worker-Allowed": "/"},
+    )
+
+
+@app.get("/manifest.json")
+async def pwa_manifest():
+    """PWA Manifest for 彈幕大螢幕"""
+    return FileResponse(
+        str(STATIC_DIR / "manifest-display.json"),
+        media_type="application/manifest+json",
+    )
+
+
+@app.get("/matchmaking", response_class=HTMLResponse)
+async def matchmaking_page():
+    """賓客相親卡填寫頁（專用 route，強制 no-cache，避免 LINE WebView 快取舊版）"""
+    html = (STATIC_DIR / "matchmaking.html").read_text(encoding="utf-8")
+    return HTMLResponse(content=html, headers=_NO_CACHE)
 
 
 @app.get("/")
@@ -1780,14 +1994,24 @@ async def profile_upload(
         "ideal2":     ideal2.strip()[:30],
         "ideal3":     ideal3.strip()[:30],
     }
-    style = style if style in ("romantic", "magazine", "figure") else "romantic"
+    VALID_AI_STYLES  = {"romantic", "magazine", "figure"}
+    VALID_RAW_STYLES = {"raw_korean", "raw_movie", "raw_japanese"}
+    if style not in VALID_AI_STYLES | VALID_RAW_STYLES:
+        style = "romantic"
 
-    # ── AI 產圖（同步等待，約 15-30 秒）──
+    # ── 產圖（同步等待，約 15-30 秒）──
     try:
-        card_bytes = await _generate_profile_card_ai(fields, photo_bytes, style)
+        if style in VALID_RAW_STYLES:
+            # 原圖直出：AI 生成右側模板 + Pillow 貼賓客照片
+            card_bytes = await _generate_profile_card_raw(fields, photo_bytes, style)
+        else:
+            # AI 美化：images.edit 將照片融入風格
+            card_bytes = await _generate_profile_card_ai(fields, photo_bytes, style)
     except Exception as e:
-        print(f"[ERROR] AI 產圖失敗: {e}")
-        raise HTTPException(status_code=500, detail=f"AI 產圖失敗，請稍後再試：{e}")
+        msg = _friendly_ai_error(e)
+        print(f"[ERROR] 產圖失敗 (style={style}): {e}")
+        asyncio.ensure_future(notify_admin_error(f"產圖失敗 style={style} / 賓客：{name}", e))
+        raise HTTPException(status_code=500, detail=msg)
 
     # ── 儲存 PNG ──
     ts   = int(time.time())
@@ -1814,6 +2038,18 @@ async def profile_upload(
         "message":   "相親卡產圖完成，已發送至大螢幕！",
     })
 
+
+# ─────────────────────────────────────────────
+# 測試廣播（開發用）
+# ─────────────────────────────────────────────
+@app.post("/api/test-profile-broadcast")
+async def test_profile_broadcast(image_path: str = Form(...), sender_name: str = Form("測試")):
+    await manager.broadcast({
+        "type":        "profile",
+        "image_path":  image_path,
+        "sender_name": sender_name,
+    })
+    return {"status": "ok", "image_path": image_path}
 
 # ─────────────────────────────────────────────
 # 靜態檔案
